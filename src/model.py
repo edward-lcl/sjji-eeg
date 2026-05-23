@@ -59,7 +59,9 @@ class TransformEEGEncoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: [B, C, T]
         tokens = self.tokenizer(x)  # [B, C, feat_dim] after adaptive pool
-        tokens = nn.functional.adaptive_avg_pool1d(tokens, self.feat_dim)
+        # MPS doesn't support non-divisible adaptive_avg_pool1d — do on CPU, move back
+        dev = tokens.device
+        tokens = nn.functional.adaptive_avg_pool1d(tokens.cpu(), self.feat_dim).to(dev)
         tokens = tokens + self.pos_embed
         out = self.transformer(tokens)   # [B, C, feat_dim]
         out = self.norm(out)
