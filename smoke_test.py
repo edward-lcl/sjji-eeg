@@ -5,18 +5,18 @@ from src.model import build_encoder, EEGClassifier
 from src.pretrain import eeg_augment, UnlabeledEEGDataset
 
 def test_encoder():
-    enc = build_encoder(n_channels=61, feat_dim=244)
-    x = torch.randn(4, 61, 1024)  # batch=4, 61ch, 4s @ 256Hz
+    enc = build_encoder(Chan=61, Features=244)
+    x = torch.randn(4, 61, 4000)  # batch=4, 61ch, 16s @ 250Hz
     out = enc(x)
     assert out.shape == (4, 244), f"Expected (4, 244), got {out.shape}"
     print(f"✓ Encoder forward pass: {x.shape} → {out.shape}")
 
 def test_classifier():
     enc = build_encoder()
-    clf = EEGClassifier(enc, n_classes=2)
+    clf = EEGClassifier(enc, nb_classes=2)
     x = torch.randn(4, 61, 1024)
     logits = clf(x)
-    assert logits.shape == (4, 2), f"Expected (4, 2), got {logits.shape}"
+    assert logits.shape == (4, 1), f"Expected (4, 1), got {logits.shape}"  # binary: 1 logit, use sigmoid
     print(f"✓ Classifier forward pass: {x.shape} → {logits.shape}")
 
 def test_augmentation():
