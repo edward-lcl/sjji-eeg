@@ -12,3 +12,6 @@ training:
   temperature: 0.5
   patience: 30
   device: auto
+
+# Paper preprocessing params (TransformEEG arXiv:2507.07622)
+# 16s windows, 25% overlap, 250Hz, 1-45Hz bandpass

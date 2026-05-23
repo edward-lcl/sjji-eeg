@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Optional
 
 
-TARGET_SFREQ = 256          # Hz — resample all data to this
+TARGET_SFREQ = 250          # Hz — paper uses 250Hz
 TARGET_CHANNELS = 61        # channel count matching TransformEEG
-EPOCH_DURATION = 4.0        # seconds per segment
-BANDPASS = (0.5, 40.0)      # Hz
+EPOCH_DURATION = 16.0       # seconds per window (paper: 16s, 25% overlap)
+EPOCH_OVERLAP = 0.25        # 25% overlap
+BANDPASS = (1.0, 45.0)      # Hz — paper uses 1-45Hz bandpass
 
 
 def load_edf(path: str):
@@ -52,16 +53,15 @@ def align_channels(raw, target_n: int = TARGET_CHANNELS):
     return raw
 
 
-def segment(raw, duration: float = EPOCH_DURATION) -> np.ndarray:
-    """Split continuous recording into fixed-length segments. Returns [N, C, T]."""
+def segment(raw, duration: float = EPOCH_DURATION, overlap: float = EPOCH_OVERLAP) -> np.ndarray:
+    """Split continuous recording into overlapping windows. Returns [N, C, T]."""
     sfreq = raw.info["sfreq"]
     n_samples = int(duration * sfreq)
+    step = int(n_samples * (1 - overlap))
     data = raw.get_data()  # [C, total_samples]
-    n_epochs = data.shape[1] // n_samples
-    segments = np.stack([
-        data[:, i * n_samples:(i + 1) * n_samples]
-        for i in range(n_epochs)
-    ])
+    total = data.shape[1]
+    starts = range(0, total - n_samples + 1, step)
+    segments = np.stack([data[:, s:s + n_samples] for s in starts])
     return segments.astype(np.float32)
 
 

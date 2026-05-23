@@ -10,11 +10,15 @@ from pathlib import Path
 
 
 DATASET_LABELS = {
-    # Known group labels per dataset based on TransformEEG paper / OpenNeuro metadata
-    "ds004148": {"group_col": "Group", "pd_value": "PD", "hc_value": "HC"},
-    "ds002778": {"group_col": "group", "pd_value": "pd", "hc_value": "hc"},
-    "ds003490": {"group_col": "Group", "pd_value": "PD", "hc_value": "HC"},
-    "ds004584": {"group_col": "diagnosis", "pd_value": "Parkinson", "hc_value": "Control"},
+    # ds004148: ALL subjects are healthy controls (used as HC arm in TransformEEG)
+    # subject IDs encode nothing — all are HC (label=0)
+    "ds004148": {"group_col": None, "pd_value": None, "hc_value": None, "all_hc": True},
+    # ds002778: subject_id prefix encodes group (sub-hc* = HC, sub-pd* = PD)
+    "ds002778": {"group_col": "participant_id", "pd_prefix": "sub-pd", "hc_prefix": "sub-hc"},
+    # ds003490: Group column uses CTL for controls (not HC)
+    "ds003490": {"group_col": "Group", "pd_value": "PD", "hc_value": "CTL"},
+    # ds004584: GROUP column; HC subjects labeled as 'Control'
+    "ds004584": {"group_col": "GROUP", "pd_value": "PD", "hc_value": "Control"},
 }
 
 
@@ -39,29 +43,49 @@ def build_labels_csv(dataset_dir: str, dataset_id: str, output_path: str) -> pd.
         participants.to_csv(output_path, index=False)
         return participants
 
+    # ds004148: all subjects are healthy controls
+    if cfg.get("all_hc"):
+        participants["label"] = 0
+        out = participants[["participant_id", "label"]].rename(columns={"participant_id": "subject_id"})
+        out.to_csv(output_path, index=False)
+        print(f"Saved {len(out)} subjects to {output_path}  (all HC, PD=0, HC={len(out)})")
+        return out
+
     group_col = cfg["group_col"]
-    if group_col not in participants.columns:
-        # Try case-insensitive match
-        match = [c for c in participants.columns if c.lower() == group_col.lower()]
-        if match:
-            group_col = match[0]
-        else:
-            print(f"WARNING: Column '{group_col}' not found. Columns: {list(participants.columns)}")
-            participants.to_csv(output_path, index=False)
-            return participants
 
-    def map_label(val):
-        val = str(val).strip()
-        if val == cfg["pd_value"] or val.lower() == cfg["pd_value"].lower():
-            return 1
-        elif val == cfg["hc_value"] or val.lower() == cfg["hc_value"].lower():
-            return 0
-        return -1  # unknown
+    # ds002778: label encoded in subject ID prefix
+    if "pd_prefix" in cfg:
+        def map_by_prefix(pid):
+            pid = str(pid).strip()
+            if pid.startswith(cfg["pd_prefix"]):
+                return 1
+            elif pid.startswith(cfg["hc_prefix"]):
+                return 0
+            return -1
+        participants["label"] = participants["participant_id"].apply(map_by_prefix)
+    else:
+        if group_col not in participants.columns:
+            match = [c for c in participants.columns if c.lower() == group_col.lower()]
+            if match:
+                group_col = match[0]
+            else:
+                print(f"WARNING: Column '{group_col}' not found. Columns: {list(participants.columns)}")
+                participants.to_csv(output_path, index=False)
+                return participants
 
-    participants["label"] = participants[group_col].apply(map_label)
+        def map_label(val):
+            val = str(val).strip()
+            if val.upper() == cfg["pd_value"].upper():
+                return 1
+            elif val.upper() == cfg["hc_value"].upper():
+                return 0
+            return -1
+
+        participants["label"] = participants[group_col].apply(map_label)
+
     unknown = participants[participants["label"] == -1]
     if len(unknown) > 0:
-        print(f"WARNING: {len(unknown)} subjects with unknown label: {unknown[group_col].unique()}")
+        print(f"WARNING: {len(unknown)} subjects with unknown label")
 
     out = participants[["participant_id", "label"]].rename(columns={"participant_id": "subject_id"})
     out = out[out["label"] >= 0]
