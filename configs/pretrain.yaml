@@ -1,0 +1,14 @@
+data_dir: data/processed/tuh_eeg
+output_path: results/encoder_pretrained.pt
+
+model:
+  n_channels: 61
+  feat_dim: 244
+
+training:
+  epochs: 300
+  batch_size: 64
+  lr: 2.5e-4
+  temperature: 0.5
+  patience: 30
+  device: auto

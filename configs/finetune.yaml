@@ -1,0 +1,24 @@
+datasets:
+  - id: ds004148
+    data_dir: data/processed/ds004148
+    labels_csv: data/processed/ds004148/labels.csv
+  - id: ds002778
+    data_dir: data/processed/ds002778
+    labels_csv: data/processed/ds002778/labels.csv
+  - id: ds003490
+    data_dir: data/processed/ds003490
+    labels_csv: data/processed/ds003490/labels.csv
+  - id: ds004584
+    data_dir: data/processed/ds004584
+    labels_csv: data/processed/ds004584/labels.csv
+
+pretrained_encoder: results/encoder_pretrained.pt
+
+training:
+  epochs: 50
+  batch_size: 32
+  lr: 1e-3
+  n_outer_folds: 10
+  device: auto
+
+results_dir: results/finetune
