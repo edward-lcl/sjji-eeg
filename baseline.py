@@ -37,7 +37,7 @@ def run_baseline():
         print(f"  {len(dataset)} segments, {len(np.unique(dataset.subject_ids()))} subjects")
 
         encoder = build_encoder()  # random init — no pretraining
-        classifier = EEGClassifier(encoder, n_classes=2)
+        classifier = EEGClassifier(encoder, nb_classes=2)
 
         results = run_lnso_cv(
             classifier=classifier,
