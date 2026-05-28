@@ -10,7 +10,7 @@ from typing import Optional
 
 
 TARGET_SFREQ = 250          # Hz — paper uses 250Hz
-TARGET_CHANNELS = 61        # channel count matching TransformEEG
+TARGET_CHANNELS = None       # None = keep native channel count per dataset (TransformEEG uses per-dataset tokenization)
 EPOCH_DURATION = 16.0       # seconds per window (paper: 16s, 25% overlap)
 EPOCH_OVERLAP = 0.25        # 25% overlap
 BANDPASS = (1.0, 45.0)      # Hz — paper uses 1-45Hz bandpass
@@ -48,22 +48,95 @@ def preprocess_raw(raw, target_sfreq: int = TARGET_SFREQ, bandpass=BANDPASS):
     return raw
 
 
-def align_channels(raw, target_n: int = TARGET_CHANNELS):
-    """Select or pad to target channel count."""
-    n = len(raw.ch_names)
-    if n >= target_n:
+def align_channels(raw, target_n: int = None):
+    """Optionally truncate to target_n channels. If target_n is None, keep all channels.
+    Never pads — cyclic padding corrupts depthwise conv tokenizers."""
+    if target_n is not None and len(raw.ch_names) > target_n:
         raw.pick(raw.ch_names[:target_n])
+    return raw
+
+
+# Standard 64-ch 10-20 subset used for unified cross-dataset encoder
+# Chosen as the intersection of standard 10-20 positions present across all 4 datasets
+UNIFIED_64_CHANNELS = [
+    'Fp1', 'Fp2', 'AF7', 'AF3', 'AF4', 'AF8',
+    'F7', 'F5', 'F3', 'F1', 'Fz', 'F2', 'F4', 'F6', 'F8',
+    'FT9', 'FT7', 'FC5', 'FC3', 'FC1', 'FCz', 'FC2', 'FC4', 'FC6', 'FT8', 'FT10',
+    'T7', 'C5', 'C3', 'C1', 'Cz', 'C2', 'C4', 'C6', 'T8',
+    'TP9', 'TP7', 'CP5', 'CP3', 'CP1', 'CPz', 'CP2', 'CP4', 'CP6', 'TP8', 'TP10',
+    'P7', 'P5', 'P3', 'P1', 'Pz', 'P2', 'P4', 'P6', 'P8',
+    'PO7', 'PO3', 'POz', 'PO4', 'PO8',
+    'O1', 'Oz', 'O2',
+    'Iz',
+]
+
+
+def _normalize_ch(name: str) -> str:
+    """Strip common EDF prefixes/suffixes so 'EEG FP1-LE' matches 'FP1'."""
+    n = name.upper()
+    for prefix in ('EEG ', 'ECG ', 'EOG ', 'EMG '):
+        if n.startswith(prefix):
+            n = n[len(prefix):]
+            break
+    n = n.split('-')[0].split('_')[0].strip()
+    return n
+
+
+def interpolate_to_unified(raw, target_channels=None):
+    """Interpolate EEG to a standard 64-ch 10-20 montage for cross-dataset compatibility.
+    Uses MNE spherical interpolation. Requires channels have standard 10-20 names."""
+    import mne
+    if target_channels is None:
+        target_channels = UNIFIED_64_CHANNELS
+
+    # Set standard montage so channel positions are known
+    montage = mne.channels.make_standard_montage('standard_1020')
+    try:
+        raw.set_montage(montage, match_case=False, on_missing='ignore', verbose=False)
+    except Exception:
+        pass
+
+    norm_map = {_normalize_ch(ch): ch for ch in raw.ch_names}
+    current = set(norm_map.keys())
+    target_upper = [ch for ch in target_channels]
+    missing = [ch for ch in target_upper if ch.upper() not in current]
+
+    if missing:
+        # Mark missing channels as bad so MNE can interpolate them
+        raw_copy = raw.copy()
+        # Add missing channels as zeros, mark bad, interpolate
+        info_missing = mne.create_info(missing, raw.info['sfreq'], 'eeg')
+        for ch in missing:
+            # Find position from montage
+            if ch in montage.ch_names:
+                pass  # position will come from set_montage
+        # Use MNE's add_reference_channels + interpolate_bads approach
+        # Simpler: just select available target channels + note missing ones
+        available = [ch for ch in target_upper if ch.upper() in norm_map]
+        # Case-insensitive pick
+        pick_names = []
+        for ch in target_upper:
+            if ch.upper() in norm_map:
+                pick_names.append(norm_map[ch.upper()])
+        raw.pick(pick_names)
+        # For truly missing channels: interpolate via spherical spline
+        # Add them as bad channels first
+        missing_in_montage = [ch for ch in missing if ch in montage.ch_names]
+        if missing_in_montage:
+            raw = mne.add_reference_channels(raw, missing_in_montage, copy=False)
+            raw.info['bads'] = missing_in_montage
+            raw.set_montage(montage, match_case=False, on_missing='ignore', verbose=False)
+            raw.interpolate_bads(reset_bads=True, verbose=False)
+        # Final pick to enforce exact order
+        final_available = [ch for ch in target_upper
+                           if ch.upper() in {c.upper() for c in raw.ch_names}]
+        ch_map2 = {ch.upper(): ch for ch in raw.ch_names}
+        raw.pick([ch_map2[ch.upper()] for ch in final_available])
     else:
-        # Repeat channels cyclically to reach target (rough but functional)
-        data, times = raw.get_data(return_times=True)
-        pad = np.tile(data, (target_n // n + 1, 1))[:target_n]
-        import mne
-        info = mne.create_info(
-            ch_names=[f"EEG{i:03d}" for i in range(target_n)],
-            sfreq=raw.info["sfreq"],
-            ch_types="eeg",
-        )
-        raw = mne.io.RawArray(pad, info, verbose=False)
+        # All target channels present — just select and reorder
+        ch_map = {ch.upper(): ch for ch in raw.ch_names}
+        raw.pick([ch_map[ch.upper()] for ch in target_upper if ch.upper() in ch_map])
+
     return raw
 
 
@@ -86,11 +159,18 @@ def zscore(segments: np.ndarray) -> np.ndarray:
     return (segments - mean) / std
 
 
-def process_eeg_file(eeg_path: str, output_path: Optional[str] = None) -> np.ndarray:
-    """Full pipeline for one EEG file → normalized segments [N, C, T]."""
+def process_eeg_file(eeg_path: str, output_path: Optional[str] = None,
+                     unified: bool = False) -> np.ndarray:
+    """Full pipeline for one EEG file → normalized segments [N, C, T].
+    unified=True: interpolate to standard 64-ch montage for cross-dataset use.
+    unified=False (default): keep native channel count for per-dataset training.
+    """
     raw = load_eeg(eeg_path)
     raw = preprocess_raw(raw)
-    raw = align_channels(raw)
+    if unified:
+        raw = interpolate_to_unified(raw)
+    else:
+        raw = align_channels(raw)  # no-op unless target_n explicitly set
     segs = segment(raw)
     segs = zscore(segs)
     if output_path:
@@ -102,8 +182,12 @@ def process_edf_file(edf_path: str, output_path: Optional[str] = None) -> np.nda
     return process_eeg_file(edf_path, output_path)
 
 
-def process_dataset_dir(input_dir: str, output_dir: str, pattern: str = None):
-    """Batch process all EEG files (BDF, SET, EDF) in a BIDS dataset directory."""
+def process_dataset_dir(input_dir: str, output_dir: str, pattern: str = None,
+                        unified: bool = False):
+    """Batch process all EEG files (BDF, SET, EDF, VHDR) in a BIDS dataset directory.
+    unified=True: interpolate to 64-ch standard montage (for SSL/cross-dataset).
+    unified=False: keep native channel count (for per-dataset supervised baseline).
+    """
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -111,17 +195,31 @@ def process_dataset_dir(input_dir: str, output_dir: str, pattern: str = None):
     files = []
     for ext in ["**/*.bdf", "**/*.set", "**/*.edf", "**/*.vhdr"]:
         files.extend(input_dir.glob(ext))
-    # Skip FDT/EEG files (loaded via SET/VHDR respectively)
     print(f"Found {len(files)} EEG files in {input_dir}")
 
+    n_ok = n_skip = n_exists = 0
     for eeg_path in files:
         rel = eeg_path.relative_to(input_dir)
         out_path = output_dir / rel.with_suffix(".npy")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         if out_path.exists():
+            n_exists += 1
             continue
         try:
-            process_eeg_file(str(eeg_path), str(out_path))
-            print(f"  processed {rel}")
+            result = process_eeg_file(str(eeg_path), str(out_path), unified=unified)
+            if result is None or (hasattr(result, 'shape') and result.shape[0] == 0):
+                n_skip += 1
+                print(f"  SKIP {rel}: produced 0 segments")
+            else:
+                n_ok += 1
+                print(f"  processed {rel}")
         except Exception as e:
+            n_skip += 1
             print(f"  SKIP {rel}: {e}")
+
+    print(f"  summary: {n_ok} processed, {n_skip} skipped, {n_exists} already existed")
+    if files and n_ok == 0 and n_exists == 0:
+        raise RuntimeError(
+            f"process_dataset_dir: 0/{len(files)} files produced output in {input_dir}. "
+            f"All {n_skip} skipped — likely a channel name or format mismatch."
+        )

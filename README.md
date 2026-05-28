@@ -54,6 +54,30 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Running Long Experiments
+
+Run experiments through the Mac watchdog so crashes and stalls are visible:
+
+```bash
+./venv/bin/python scripts/mac_experiment_watchdog.py --name baseline_native -- ./venv/bin/python -u baseline.py
+```
+
+For overnight runs, install the watchdog as a macOS LaunchAgent:
+
+```bash
+./venv/bin/python scripts/mac_launch_experiment.py --name baseline_native --load -- ./venv/bin/python -u baseline.py
+```
+
+See [docs/EXPERIMENT_WATCHDOG.md](docs/EXPERIMENT_WATCHDOG.md).
+
+Start the local control console:
+
+```bash
+./venv/bin/python scripts/mac_launch_console.py --load --port 8765
+```
+
+Open `http://127.0.0.1:8765` to inspect watchdog status, events, and logs.
+
 ## References
 
 - TransformEEG: Del Pup et al. (2025), Neurocomputing. <https://github.com/MedMaxLab/TransformEEG>

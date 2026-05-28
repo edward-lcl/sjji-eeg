@@ -26,8 +26,12 @@ def stage_preprocess(args):
 
     raw_dir = "data/raw"
     processed_dir = "data/processed"
+    unified_dir = "data/processed_unified"  # 64-ch interpolated for SSL + cross-dataset
 
     datasets = ["ds004148", "ds002778", "ds003490", "ds004584"]
+
+    # Pass 1: native channel counts (for per-dataset supervised baseline)
+    print("=== Pass 1: native channels (per-dataset supervised baseline) ===")
     for ds in datasets:
         src = Path(raw_dir) / ds
         dst = Path(processed_dir) / ds
@@ -37,8 +41,19 @@ def stage_preprocess(args):
         print(f"\nPreprocessing {ds}...")
         process_dataset_dir(str(src), str(dst))
 
+    # Pass 2: unified 64-ch (for SSL pretraining + cross-dataset eval)
+    print("\n=== Pass 2: unified 64-ch montage (SSL + cross-dataset) ===")
+    for ds in datasets:
+        src = Path(raw_dir) / ds
+        dst = Path(unified_dir) / ds
+        if not src.exists():
+            continue
+        print(f"\nPreprocessing {ds} (unified)...")
+        process_dataset_dir(str(src), str(dst), unified=True)
+
     print("\nBuilding label CSVs...")
     build_all_labels(raw_dir, processed_dir)
+    build_all_labels(raw_dir, unified_dir)
 
 
 def stage_pretrain(args):

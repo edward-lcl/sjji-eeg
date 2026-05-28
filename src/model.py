@@ -132,5 +132,8 @@ class EEGClassifier(nn.Module):
         return self.linear_lay(x)
 
 
-def build_encoder(Chan=61, Features=244, seed=None) -> TransformEEGEncoder:
+def build_encoder(Chan=61, Features=None, seed=None) -> TransformEEGEncoder:
+    if Features is None:
+        # Features = Chan * D1 * D2 (output of Conv1DEncoder with D1=2, D2=2)
+        Features = Chan * 4
     return TransformEEGEncoder(Chan=Chan, Features=Features, seed=seed)

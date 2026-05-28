@@ -22,10 +22,10 @@ from src.evaluate import print_results, save_results, TRANSFORM_EEG_BASELINE
 DATASET_IDS = ["ds004148", "ds002778", "ds003490", "ds004584"]
 PD_DATASET_IDS = ["ds002778", "ds003490", "ds004584"]  # datasets with PD subjects
 
-EPOCHS = 30
-BATCH_SIZE = 64
+EPOCHS = 50
+BATCH_SIZE = 32
 LR = 1e-3
-N_OUTER = 5
+N_OUTER = 10
 DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
 
 
@@ -45,23 +45,33 @@ def load_all_datasets(processed_dir: str):
 
 
 class FlatDataset(torch.utils.data.Dataset):
-    def __init__(self, samples):
+    def __init__(self, samples, n_channels=None):
         self.samples = samples
+        self.n_channels = n_channels
     def __len__(self): return len(self.samples)
-    def __getitem__(self, i): return self.samples[i][0], self.samples[i][1]
+    def __getitem__(self, i):
+        x, y = self.samples[i][0], self.samples[i][1]
+        if self.n_channels is not None and x.shape[0] > self.n_channels:
+            x = x[:self.n_channels]
+        return x, y
     def subject_ids(self): return np.array([s[2] for s in self.samples])
 
 
-def train_eval(train_samples, test_samples):
-    train_ds = FlatDataset(train_samples)
-    test_ds = FlatDataset(test_samples)
+def train_eval(train_samples, test_samples, n_channels: int):
+    train_ds = FlatDataset(train_samples, n_channels=n_channels)
+    test_ds = FlatDataset(test_samples, n_channels=n_channels)
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
     test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE)
 
-    encoder = build_encoder()
+    # Class-weighted loss to handle PD/HC imbalance
+    n_pd = sum(1 for s in train_samples if s[1] == 1)
+    n_hc = sum(1 for s in train_samples if s[1] == 0)
+    pos_weight = torch.tensor([n_hc / max(n_pd, 1)], device=DEVICE)
+
+    encoder = build_encoder(Chan=n_channels)
     model = EEGClassifier(encoder, nb_classes=2).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     for _ in range(EPOCHS):
         train_epoch(model, train_loader, optimizer, criterion, DEVICE)
@@ -70,21 +80,30 @@ def train_eval(train_samples, test_samples):
     return compute_metrics(preds, labels)
 
 
+def get_n_channels(dataset) -> int:
+    """Use the smallest native channel count in a dataset.
+
+    Some OpenNeuro files within a dataset differ by one channel. TransformEEG
+    needs a fixed per-dataset channel count, so crop to the conservative common
+    count without cyclic padding.
+    """
+    return min(sample[0].shape[0] for sample in dataset.samples)
+
+
 def mode_per_dataset(datasets):
     """N-LNSO CV on each PD dataset paired with HC from ds004148."""
     print("\n" + "="*60)
     print("MODE 1: PER-DATASET N-LNSO (TransformEEG protocol)")
     print("="*60)
 
-    hc_samples = datasets["ds004148"].samples  # HC-only pool
-
     all_results = {}
     for ds_id in PD_DATASET_IDS:
         ds = datasets[ds_id]
+        n_channels = get_n_channels(ds)
         subjects = np.unique([s[2] for s in ds.samples])
         n_pd = sum(1 for s in ds.samples if s[1] == 1)
         n_hc_ds = sum(1 for s in ds.samples if s[1] == 0)
-        print(f"\n--- {ds_id} ({len(subjects)} subjects, PD={n_pd}, HC={n_hc_ds}) ---")
+        print(f"\n--- {ds_id} ({len(subjects)} subjects, PD={n_pd}, HC={n_hc_ds}, Chan={n_channels}) ---")
 
         # Stratified subject folds
         pd_subjects = [s for s in subjects if any(x[2] == s and x[1] == 1 for x in ds.samples)]
@@ -95,22 +114,18 @@ def mode_per_dataset(datasets):
 
         fold_metrics = []
         for fold in range(N_OUTER):
-            # Stratified: pick ~1/N_OUTER from each class as test subjects
             pd_test = pd_subjects[fold::N_OUTER]
             hc_test = hc_subjects[fold::N_OUTER]
             test_subjects = set(pd_test) | set(hc_test)
 
             test_samples = [s for s in ds.samples if s[2] in test_subjects]
-            train_ds_samples = [s for s in ds.samples if s[2] not in test_subjects]
-
-            # Augment train with HC from ds004148
-            train_samples = train_ds_samples + hc_samples
+            train_samples = [s for s in ds.samples if s[2] not in test_subjects]
 
             test_labels = [s[1] for s in test_samples]
             if len(set(test_labels)) < 2:
                 continue
 
-            metrics = train_eval(train_samples, test_samples)
+            metrics = train_eval(train_samples, test_samples, n_channels)
             fold_metrics.append(metrics)
             print(f"  Fold {fold+1}: bal_acc={metrics['balanced_accuracy']:.3f}  "
                   f"sens={metrics['sensitivity']:.3f}  spec={metrics['specificity']:.3f}")
@@ -139,29 +154,42 @@ def mode_cross_dataset(datasets):
     for held_out_id in PD_DATASET_IDS:
         train_ids = [d for d in DATASET_IDS if d != held_out_id]
         test_ds = datasets[held_out_id]
+        n_channels = get_n_channels(test_ds)
 
-        # Combine all training datasets
+        # Combine all training datasets — must match held-out channel count
+        # Only include training datasets with same channel count for valid comparison
         train_samples = []
         for tid in train_ids:
-            train_samples.extend(datasets[tid].samples)
+            if get_n_channels(datasets[tid]) == n_channels:
+                train_samples.extend(datasets[tid].samples)
+            else:
+                print(f"  WARNING: {tid} has {get_n_channels(datasets[tid])}ch vs {held_out_id}'s {n_channels}ch — skipping in cross-dataset train")
+
+        if not train_samples:
+            print(f"\n  Hold-out {held_out_id}: no compatible training datasets, skip")
+            continue
 
         test_labels = [s[1] for s in test_ds.samples]
         if len(set(test_labels)) < 2:
             print(f"\n  Hold-out {held_out_id}: single class, skip")
             continue
 
-        print(f"\n  Train: {train_ids} → Test: {held_out_id}")
+        print(f"\n  Train: {train_ids} → Test: {held_out_id} (Chan={n_channels})")
         print(f"  Train: {len(train_samples)} segs | Test: {len(test_ds.samples)} segs")
 
-        train_ds_flat = FlatDataset(train_samples)
-        test_ds_flat = FlatDataset(test_ds.samples)
+        train_ds_flat = FlatDataset(train_samples, n_channels=n_channels)
+        test_ds_flat = FlatDataset(test_ds.samples, n_channels=n_channels)
         train_loader = DataLoader(train_ds_flat, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
         test_loader = DataLoader(test_ds_flat, batch_size=BATCH_SIZE)
 
-        encoder = build_encoder()
+        n_pd = sum(1 for s in train_samples if s[1] == 1)
+        n_hc = sum(1 for s in train_samples if s[1] == 0)
+        pos_weight = torch.tensor([n_hc / max(n_pd, 1)], device=DEVICE)
+
+        encoder = build_encoder(Chan=n_channels)
         model = EEGClassifier(encoder, nb_classes=2).to(DEVICE)
         optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-        criterion = nn.BCEWithLogitsLoss()
+        criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
         for epoch in range(EPOCHS):
             loss = train_epoch(model, train_loader, optimizer, criterion, DEVICE)

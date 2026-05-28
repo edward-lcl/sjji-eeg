@@ -1,6 +1,7 @@
-data/raw/
-data/processed/
+data/
 results/
+runs/
+logs/
 venv/
 __pycache__/
 *.pyc
@@ -10,4 +11,5 @@ __pycache__/
 .ipynb_checkpoints/
 *.pt
 *.ckpt
+*.npy
 wandb/

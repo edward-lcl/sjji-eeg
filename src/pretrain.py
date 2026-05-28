@@ -82,7 +82,7 @@ def pretrain_simclr(
     ).to(device)
 
     dataset = UnlabeledEEGDataset(data_dir)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=False)
 
     params = list(encoder.parameters()) + list(projector.parameters())
     optimizer = torch.optim.Adam(params, lr=lr, betas=(0.75, 0.999))
