@@ -83,8 +83,10 @@ def _normalize_ch(name: str) -> str:
 
 
 def interpolate_to_unified(raw, target_channels=None):
-    """Interpolate EEG to a standard 64-ch 10-20 montage for cross-dataset compatibility.
-    Uses MNE spherical interpolation. Requires channels have standard 10-20 names."""
+    """Map EEG to a standard 64-ch 10-20 montage for cross-dataset compatibility.
+    Available channels are selected; missing channels are zero-padded.
+    Uses zero-padding instead of MNE spherical interpolation to avoid NaN/inf
+    from recordings whose montage doesn't map to standard 10-20 positions (e.g. TUH tcp_le)."""
     import mne
     if target_channels is None:
         target_channels = UNIFIED_64_CHANNELS
@@ -97,47 +99,23 @@ def interpolate_to_unified(raw, target_channels=None):
         pass
 
     norm_map = {_normalize_ch(ch): ch for ch in raw.ch_names}
-    current = set(norm_map.keys())
-    target_upper = [ch for ch in target_channels]
-    missing = [ch for ch in target_upper if ch.upper() not in current]
+    n_samples = raw.n_times
+    sfreq = raw.info['sfreq']
 
-    if missing:
-        # Mark missing channels as bad so MNE can interpolate them
-        raw_copy = raw.copy()
-        # Add missing channels as zeros, mark bad, interpolate
-        info_missing = mne.create_info(missing, raw.info['sfreq'], 'eeg')
-        for ch in missing:
-            # Find position from montage
-            if ch in montage.ch_names:
-                pass  # position will come from set_montage
-        # Use MNE's add_reference_channels + interpolate_bads approach
-        # Simpler: just select available target channels + note missing ones
-        available = [ch for ch in target_upper if ch.upper() in norm_map]
-        # Case-insensitive pick
-        pick_names = []
-        for ch in target_upper:
-            if ch.upper() in norm_map:
-                pick_names.append(norm_map[ch.upper()])
-        raw.pick(pick_names)
-        # For truly missing channels: interpolate via spherical spline
-        # Add them as bad channels first
-        missing_in_montage = [ch for ch in missing if ch in montage.ch_names]
-        if missing_in_montage:
-            raw = mne.add_reference_channels(raw, missing_in_montage, copy=False)
-            raw.info['bads'] = missing_in_montage
-            raw.set_montage(montage, match_case=False, on_missing='ignore', verbose=False)
-            raw.interpolate_bads(reset_bads=True, verbose=False)
-        # Final pick to enforce exact order
-        final_available = [ch for ch in target_upper
-                           if ch.upper() in {c.upper() for c in raw.ch_names}]
-        ch_map2 = {ch.upper(): ch for ch in raw.ch_names}
-        raw.pick([ch_map2[ch.upper()] for ch in final_available])
-    else:
-        # All target channels present — just select and reorder
-        ch_map = {ch.upper(): ch for ch in raw.ch_names}
-        raw.pick([ch_map[ch.upper()] for ch in target_upper if ch.upper() in ch_map])
+    # Build output array: select available channels, zero-pad missing ones
+    rows = []
+    for ch in target_channels:
+        if ch.upper() in norm_map:
+            idx = raw.ch_names.index(norm_map[ch.upper()])
+            rows.append(raw.get_data(picks=[idx])[0])
+        else:
+            rows.append(np.zeros(n_samples, dtype=np.float32))
 
-    return raw
+    data = np.array(rows, dtype=np.float32)  # [64, n_samples]
+
+    # Rebuild a minimal Raw object so the rest of the pipeline (segment, zscore) works
+    info = mne.create_info(list(target_channels), sfreq=sfreq, ch_types='eeg')
+    return mne.io.RawArray(data, info, verbose=False)
 
 
 def segment(raw, duration: float = EPOCH_DURATION, overlap: float = EPOCH_OVERLAP) -> np.ndarray:
