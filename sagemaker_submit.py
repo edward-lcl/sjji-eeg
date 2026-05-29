@@ -59,6 +59,13 @@ JOB_CONFIGS = {
         "data_channels": ["labeled_pd", "processed_unified"],
         "description": "Cross-dataset evaluation (leave-one-dataset-out)",
     },
+    "preprocess": {
+        "entry_point": "scripts/sm_preprocess.py",
+        "instance":    "ml.r5.4xlarge",   # 16 vCPU, 128GB RAM — approved quota, 8 workers safe
+        "max_hours":   6,
+        "data_channels": [],               # no channel mount — reads S3 directly via boto3
+        "description": "Preprocess all 75k TUH EDF files → .npy segments in S3",
+    },
     "ssl_pilot": {
         "entry_point": "experiments/ssl_pilot.py",
         "instance":    "ml.g5.xlarge",
@@ -81,6 +88,8 @@ SOURCE_WHITELIST = (
     "experiments",
     "scripts",
     "configs",
+    "baseline.py",
+    "train.py",
     "requirements.txt",
     "pyproject.toml",
     "README.md",
@@ -109,7 +118,7 @@ def stage_source_dir(repo_root: str) -> str:
     return staging
 
 
-def build_data_inputs(channels: list[str], bucket: str) -> dict:
+def build_data_inputs(channels: list[str], bucket: str, job_preset: str = "") -> dict:
     """Build SageMaker TrainingInput objects for each requested data channel."""
     inputs = {}
     for ch in channels:
@@ -121,7 +130,7 @@ def build_data_inputs(channels: list[str], bucket: str) -> dict:
         inputs[ch] = TrainingInput(
             s3_data=uri,
             s3_data_type="S3Prefix",
-            input_mode="File",   # FastFile mode available if data is accessed sequentially
+            input_mode="FastFile" if (ch == "tuh_eeg" and job_preset == "preprocess") else "File",
         )
         print(f"  data[{ch}]: {uri}")
     return inputs
@@ -185,7 +194,7 @@ def main():
     print(f"  Source:   {staging_dir}")
     print(f"  Region:   {region}  Bucket: {bucket}")
 
-    data_inputs = build_data_inputs(data_channels, bucket)
+    data_inputs = build_data_inputs(data_channels, bucket, job_preset=args.job)
 
     if args.dry_run:
         print("\n[dry-run] Not submitting.")
@@ -198,7 +207,7 @@ def main():
         role=role_arn,
         instance_type=instance,
         instance_count=1,
-        volume_size=200,   # GB — EDF files are large; increase for full TUH jobs
+        volume_size=150 if args.job == "preprocess" else 200,   # 150GB: GPU image ~40GB + working space; training: needs space for data copy
         max_run=max_hours * 3600,
         use_spot_instances=args.spot,
         max_wait=(max_hours * 3600 + 3600) if args.spot else None,
@@ -212,8 +221,11 @@ def main():
             "SM_JOB_NAME":   job_name,
             "S3_BUCKET":     bucket,
             "DATA_CHANNELS": ",".join(data_channels),
+            # S3 coords for preprocess job (boto3 direct, no channel mount)
+            "S3_RAW_PREFIX": "data/raw/tuh_eeg/v2.0.1/edf",
+            "S3_OUT_PREFIX": "data/processed_unified/tuh_eeg",
             # Point MNE/cache dirs at instance scratch
-            "MNE_DATA":      "/opt/ml/input/data",
+            "MNE_DATA":      "/tmp/mne",
             "RESULTS_DIR":   "/opt/ml/model",
         },
         tags=[
