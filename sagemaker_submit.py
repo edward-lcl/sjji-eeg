@@ -62,7 +62,7 @@ JOB_CONFIGS = {
     "preprocess": {
         "entry_point": "scripts/sm_preprocess.py",
         "instance":    "ml.r5.4xlarge",   # 16 vCPU, 128GB RAM — approved quota, 8 workers safe
-        "max_hours":   6,
+        "max_hours":   12,
         "data_channels": [],               # no channel mount — reads S3 directly via boto3
         "description": "Preprocess all 75k TUH EDF files → .npy segments in S3",
     },

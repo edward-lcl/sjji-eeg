@@ -26,7 +26,7 @@ EPOCHS = 50
 BATCH_SIZE = 32
 LR = 1e-3
 N_OUTER = 10
-DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
+DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 
 
 def load_all_datasets(processed_dir: str):
@@ -98,6 +98,9 @@ def mode_per_dataset(datasets):
 
     all_results = {}
     for ds_id in PD_DATASET_IDS:
+        if ds_id not in datasets:
+            print(f"  WARN: {ds_id} not loaded (missing or mid-ingest), skipping")
+            continue
         ds = datasets[ds_id]
         n_channels = get_n_channels(ds)
         subjects = np.unique([s[2] for s in ds.samples])
@@ -152,6 +155,9 @@ def mode_cross_dataset(datasets):
 
     results = {}
     for held_out_id in PD_DATASET_IDS:
+        if held_out_id not in datasets:
+            print(f"  WARN: {held_out_id} not loaded, skipping")
+            continue
         train_ids = [d for d in DATASET_IDS if d != held_out_id]
         test_ds = datasets[held_out_id]
         n_channels = get_n_channels(test_ds)

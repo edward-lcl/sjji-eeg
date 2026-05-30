@@ -36,7 +36,7 @@ from baseline import DEVICE, BATCH_SIZE, LR, N_OUTER, PD_DATASET_IDS, load_all_d
 # --- Config ---
 PRETRAIN_EPOCHS   = 100
 PRETRAIN_LR       = 2.5e-4
-PRETRAIN_BATCH    = 64
+PRETRAIN_BATCH    = 256
 FINETUNE_EPOCHS   = 30   # shorter than supervised: encoder already has structure
 N_CHANNELS        = 64
 # SageMaker mounts channels at /opt/ml/input/data/<channel_name>/
@@ -106,6 +106,7 @@ def run_ssl_pilot():
             lr=PRETRAIN_LR,
             patience=20,
             device=DEVICE,
+            n_channels=N_CHANNELS,
         )
         print(f"  Encoder saved to {ENCODER_PATH}")
 
