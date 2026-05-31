@@ -1,30 +1,59 @@
 """
-SimCLR self-supervised pretraining on unlabeled EEG data via SelfEEG.
+SimCLR self-supervised pretraining on unlabeled EEG data.
 """
 
+import json
 import os
 import torch
 import torch.nn as nn
 import numpy as np
 from pathlib import Path
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Sampler
 from tqdm import tqdm
 
 
+MANIFEST_FILE = "manifest.json"
+_EPOCH_CKPT = "simclr_checkpoint.pt"
+_MID_CKPT = "simclr_mid_epoch.pt"
+_CKPT_EVERY = 500  # save mid-epoch checkpoint every N batches
+
+
 class UnlabeledEEGDataset(Dataset):
-    """Loads preprocessed .npy segment files from a directory tree."""
+    """
+    Loads preprocessed .npy segment files from a directory tree.
+
+    Fast path: reads manifest.json (file → segment count) instead of opening
+    every file. Generate manifest.json with scripts/build_manifest.py and
+    upload it alongside the data before training.
+    """
 
     def __init__(self, data_dir: str, n_channels: int = None):
         self.n_channels = n_channels
         self.files = []
-        self.offsets = []
         self.lengths = []
 
-        for npy_path in sorted(Path(data_dir).glob("**/*.npy")):
-            arr = np.load(npy_path, mmap_mode="r")
-            self.files.append(npy_path)
-            self.offsets.append(len(self.offsets) and self.offsets[-1] + self.lengths[-1] or 0)
-            self.lengths.append(len(arr))
+        manifest_path = Path(data_dir) / MANIFEST_FILE
+        if manifest_path.exists():
+            print(f"[dataset] Loading manifest from {manifest_path}")
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+            for rel_path, length in manifest.items():
+                self.files.append(Path(data_dir) / rel_path)
+                self.lengths.append(length)
+            print(f"[dataset] {len(self.files):,} files  {sum(self.lengths):,} segments")
+        else:
+            print(f"[dataset] No manifest — scanning {data_dir} (run scripts/build_manifest.py first!)")
+            for npy_path in sorted(Path(data_dir).glob("**/*.npy")):
+                arr = np.load(str(npy_path), mmap_mode="r")
+                self.files.append(npy_path)
+                self.lengths.append(len(arr))
+            print(f"[dataset] {len(self.files):,} files  {sum(self.lengths):,} segments")
+            try:
+                rel = {str(p.relative_to(data_dir)): l for p, l in zip(self.files, self.lengths)}
+                manifest_path.write_text(json.dumps(rel, indent=2))
+                print(f"[dataset] Manifest saved to {manifest_path}")
+            except Exception as e:
+                print(f"[dataset] Could not save manifest: {e}")
 
         self._cumlen = np.cumsum([0] + self.lengths)
 
@@ -32,9 +61,17 @@ class UnlabeledEEGDataset(Dataset):
         return int(self._cumlen[-1])
 
     def __getitem__(self, idx: int):
-        file_idx = np.searchsorted(self._cumlen[1:], idx, side="right")
+        file_idx = int(np.searchsorted(self._cumlen[1:], idx, side="right"))
         local_idx = idx - int(self._cumlen[file_idx])
-        arr = np.load(self.files[file_idx], mmap_mode="r")
+        # Per-worker LRU file cache — avoids re-opening the same mmap on consecutive accesses.
+        # With FileGroupedSampler, most accesses hit the same 1-2 files per batch.
+        if not hasattr(self, "_cache"):
+            self._cache = {}
+        if file_idx not in self._cache:
+            if len(self._cache) >= 8:
+                self._cache.pop(next(iter(self._cache)))
+            self._cache[file_idx] = np.load(str(self.files[file_idx]), mmap_mode="r")
+        arr = self._cache[file_idx]
         x = torch.from_numpy(arr[local_idx].copy())
         if self.n_channels is not None:
             C = x.shape[0]
@@ -43,6 +80,36 @@ class UnlabeledEEGDataset(Dataset):
             elif C < self.n_channels:
                 x = torch.nn.functional.pad(x, (0, 0, 0, self.n_channels - C))
         return x
+
+
+class FileGroupedSampler(Sampler):
+    """
+    Yields sample indices grouped by source file.
+
+    Files are shuffled each epoch; within-file order is also shuffled.
+    Compared to pure random shuffle, this cuts per-batch S3/disk seeks by ~100x
+    because consecutive batches read from the same file rather than 256 random ones.
+    Set self.epoch before each epoch to get a different shuffle order.
+    """
+
+    def __init__(self, dataset: UnlabeledEEGDataset, epoch: int = 0):
+        self._dataset = dataset
+        self.epoch = epoch
+
+    def __len__(self):
+        return len(self._dataset)
+
+    def __iter__(self):
+        g = torch.Generator()
+        g.manual_seed(self.epoch)
+        n_files = len(self._dataset.files)
+        file_order = torch.randperm(n_files, generator=g).tolist()
+        for file_idx in file_order:
+            start = int(self._dataset._cumlen[file_idx])
+            end = int(self._dataset._cumlen[file_idx + 1])
+            n = end - start
+            within = (torch.randperm(n, generator=g) + start).tolist()
+            yield from within
 
 
 def eeg_augment_batch(x: torch.Tensor) -> torch.Tensor:
@@ -55,8 +122,8 @@ def eeg_augment_batch(x: torch.Tensor) -> torch.Tensor:
     crop_lens = (crop_fracs * T).long().clamp(min=1, max=T)
     max_starts = (T - crop_lens).clamp(min=0)
     starts = (torch.rand(B, device=device) * (max_starts.float() + 1)).long().clamp(max=max_starts)
-    t_idx = torch.arange(T, device=device).unsqueeze(0)          # [1, T]
-    in_crop = (t_idx >= starts.unsqueeze(1)) & (t_idx < (starts + crop_lens).unsqueeze(1))  # [B, T]
+    t_idx = torch.arange(T, device=device).unsqueeze(0)
+    in_crop = (t_idx >= starts.unsqueeze(1)) & (t_idx < (starts + crop_lens).unsqueeze(1))
     x = x * in_crop.unsqueeze(1).float()
 
     # Gaussian noise
@@ -91,7 +158,6 @@ def pretrain_simclr(
     print(f"Pretraining on {device}")
     encoder = encoder.to(device)
 
-    # Projection head for SimCLR
     feat_dim = encoder.feat_dim
     projector = nn.Sequential(
         nn.Linear(feat_dim, feat_dim),
@@ -103,10 +169,11 @@ def pretrain_simclr(
     n_workers = 4 if use_cuda else 0
 
     dataset = UnlabeledEEGDataset(data_dir, n_channels=n_channels)
+    sampler = FileGroupedSampler(dataset, epoch=0)
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=True,
+        sampler=sampler,
         num_workers=n_workers,
         pin_memory=use_cuda,
         persistent_workers=n_workers > 0,
@@ -121,7 +188,7 @@ def pretrain_simclr(
     def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temp: float) -> torch.Tensor:
         z1 = nn.functional.normalize(z1, dim=1)
         z2 = nn.functional.normalize(z2, dim=1)
-        z = torch.cat([z1, z2], dim=0)  # [2N, D]
+        z = torch.cat([z1, z2], dim=0)
         sim = torch.mm(z, z.T) / temp
         N = z1.shape[0]
         labels = torch.cat([torch.arange(N, 2 * N), torch.arange(N)]).to(device)
@@ -134,7 +201,10 @@ def pretrain_simclr(
     start_epoch = 1
 
     ckpt_dir = Path(os.environ.get("SM_HP_CHECKPOINT_DIR", "/opt/ml/checkpoints"))
-    ckpt_path = ckpt_dir / "simclr_checkpoint.pt"
+    ckpt_path = ckpt_dir / _EPOCH_CKPT
+    mid_ckpt_path = ckpt_dir / _MID_CKPT
+
+    # Restore from epoch-level checkpoint (saved every 5 epochs)
     if ckpt_path.exists():
         ckpt = torch.load(ckpt_path, map_location="cpu")
         encoder.load_state_dict(ckpt["encoder"])
@@ -143,14 +213,32 @@ def pretrain_simclr(
         start_epoch = ckpt["epoch"] + 1
         best_loss = ckpt["best_loss"]
         no_improve = ckpt["no_improve"]
-        print(f"Resumed from checkpoint at epoch {ckpt['epoch']} (loss={best_loss:.4f})")
+        print(f"[ckpt] Resumed epoch checkpoint at epoch {ckpt['epoch']} (loss={best_loss:.4f})")
+
+    # Restore from mid-epoch checkpoint if it belongs to start_epoch
+    mid_start_batch = 0
+    if mid_ckpt_path.exists():
+        mid_ckpt = torch.load(mid_ckpt_path, map_location="cpu")
+        if mid_ckpt.get("epoch") == start_epoch:
+            encoder.load_state_dict(mid_ckpt["encoder"])
+            projector.load_state_dict(mid_ckpt["projector"])
+            optimizer.load_state_dict(mid_ckpt["optimizer"])
+            mid_start_batch = mid_ckpt["batch_idx"] + 1
+            best_loss = mid_ckpt.get("best_loss", best_loss)
+            no_improve = mid_ckpt.get("no_improve", no_improve)
+            print(f"[ckpt] Resumed mid-epoch checkpoint at epoch {start_epoch} batch {mid_start_batch}")
 
     for epoch in range(start_epoch, epochs + 1):
         encoder.train()
         projector.train()
         total_loss = 0.0
+        sampler.epoch = epoch  # re-shuffle files each epoch
 
-        for batch in tqdm(loader, desc=f"Epoch {epoch}/{epochs}", leave=False):
+        for batch_idx, batch in enumerate(tqdm(loader, desc=f"Epoch {epoch}/{epochs}", leave=False)):
+            # Skip batches already processed (mid-epoch resume)
+            if epoch == start_epoch and batch_idx < mid_start_batch:
+                continue
+
             x = batch.float().to(device, non_blocking=use_cuda)
 
             with torch.amp.autocast("cuda", enabled=use_cuda):
@@ -166,7 +254,25 @@ def pretrain_simclr(
             scaler.update()
             total_loss += loss.item()
 
-        avg_loss = total_loss / len(loader)
+            if (batch_idx + 1) % _CKPT_EVERY == 0:
+                ckpt_dir.mkdir(parents=True, exist_ok=True)
+                torch.save({
+                    "epoch": epoch,
+                    "batch_idx": batch_idx,
+                    "encoder": encoder.state_dict(),
+                    "projector": projector.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "best_loss": best_loss,
+                    "no_improve": no_improve,
+                }, mid_ckpt_path)
+
+        # After each epoch, clear mid-epoch checkpoint (it's stale now)
+        if mid_ckpt_path.exists():
+            mid_ckpt_path.unlink()
+        mid_start_batch = 0  # reset for next epoch
+
+        n_batches = len(loader) - (mid_start_batch if epoch == start_epoch else 0)
+        avg_loss = total_loss / max(n_batches, 1)
         scheduler.step()
         print(f"Epoch {epoch}: loss={avg_loss:.4f}")
 
@@ -183,9 +289,12 @@ def pretrain_simclr(
         if epoch % 5 == 0:
             ckpt_dir.mkdir(parents=True, exist_ok=True)
             torch.save({
-                "epoch": epoch, "encoder": encoder.state_dict(),
-                "projector": projector.state_dict(), "optimizer": optimizer.state_dict(),
-                "best_loss": best_loss, "no_improve": no_improve,
+                "epoch": epoch,
+                "encoder": encoder.state_dict(),
+                "projector": projector.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "best_loss": best_loss,
+                "no_improve": no_improve,
             }, ckpt_path)
 
-    print(f"Pretraining done. Best loss: {best_loss:.4f}. Weights saved to {output_path}")
+    print(f"Pretraining done. Best loss: {best_loss:.4f}. Weights → {output_path}")
