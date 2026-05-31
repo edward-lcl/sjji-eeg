@@ -38,7 +38,7 @@ from sagemaker.inputs import TrainingInput
 # Job configs: entry_point, instance, max hours, data channels                #
 # --------------------------------------------------------------------------- #
 JOB_CONFIGS = {
-    {"pretrain": {
+    "pretrain": {
         "entry_point": "experiments/ssl_pilot.py",
         "instance":    "ml.g5.4xlarge",   # A10G 24GB VRAM — good for SimCLR at scale
         "max_hours":   30,
