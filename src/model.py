@@ -10,6 +10,7 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint as grad_checkpoint
 
 
 def _reset_seed(seed):
@@ -98,13 +99,17 @@ class TransformEEGEncoder(nn.Module):
             num_layers=2,
             enable_nested_tensor=False,
         )
+        self.use_grad_ckpt = True
         self.pool_lay = nn.AdaptiveAvgPool1d(1)
 
     def forward(self, x):
         # x: [B, C, T]
         x = self.token_gen(x)           # [B, Features, T']
         x = x.permute(0, 2, 1)         # [B, T', Features]
-        x = self.transformer(x)         # [B, T', Features]
+        if getattr(self, "use_grad_ckpt", False) and self.training:
+            x = grad_checkpoint(self.transformer, x, use_reentrant=False)
+        else:
+            x = self.transformer(x)     # [B, T', Features]
         x = x.permute(0, 2, 1)         # [B, Features, T']
         # AdaptiveAvgPool1d unsupported on MPS; CUDA handles it natively
         dev = x.device

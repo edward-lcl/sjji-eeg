@@ -36,7 +36,7 @@ from baseline import DEVICE, BATCH_SIZE, LR, N_OUTER, PD_DATASET_IDS, load_all_d
 # --- Config ---
 PRETRAIN_EPOCHS   = 100
 PRETRAIN_LR       = 2.5e-4
-PRETRAIN_BATCH    = 512   # bumped from 256 — A10G 24GB handles it; halves batch count
+PRETRAIN_BATCH    = 128   # A10G 24GB OOMs at 512 and 256 with transformer; 128 is safe
 FINETUNE_EPOCHS   = 30   # shorter than supervised: encoder already has structure
 N_CHANNELS        = 64
 # SageMaker mounts packed channel first, fall back to unpacked for local dev
