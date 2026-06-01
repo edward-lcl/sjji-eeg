@@ -106,9 +106,9 @@ class TransformEEGEncoder(nn.Module):
         x = x.permute(0, 2, 1)         # [B, T', Features]
         x = self.transformer(x)         # [B, T', Features]
         x = x.permute(0, 2, 1)         # [B, Features, T']
-        # MPS workaround for AdaptiveAvgPool1d
+        # AdaptiveAvgPool1d unsupported on MPS; CUDA handles it natively
         dev = x.device
-        x = self.pool_lay(x.cpu()).to(dev)  # [B, Features, 1]
+        x = self.pool_lay(x.cpu()).to(dev) if dev.type == "mps" else self.pool_lay(x)  # [B, Features, 1]
         x = x.squeeze(-1)               # [B, Features]
         return x
 

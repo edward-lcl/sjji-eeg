@@ -166,7 +166,7 @@ def pretrain_simclr(
     ).to(device)
 
     use_cuda = device.startswith("cuda")
-    n_workers = 4 if use_cuda else 0
+    n_workers = 8 if use_cuda else 0
 
     dataset = UnlabeledEEGDataset(data_dir, n_channels=n_channels)
     sampler = FileGroupedSampler(dataset, epoch=0)
@@ -181,8 +181,8 @@ def pretrain_simclr(
     )
 
     params = list(encoder.parameters()) + list(projector.parameters())
-    optimizer = torch.optim.Adam(params, lr=lr, betas=(0.75, 0.999))
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+    optimizer = torch.optim.Adam(params, lr=lr, betas=(0.9, 0.999))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr * 0.01)
     scaler = torch.amp.GradScaler("cuda", enabled=use_cuda)
 
     def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temp: float) -> torch.Tensor:
@@ -250,6 +250,8 @@ def pretrain_simclr(
 
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(params, max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
             total_loss += loss.item()
