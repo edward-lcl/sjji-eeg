@@ -26,7 +26,7 @@ import boto3
 import numpy as np
 
 BUCKET              = os.environ.get("S3_BUCKET", "sagemaker-us-east-2-506145782110")
-SRC_PREFIX          = "data/processed_unified"
+SRC_PREFIX          = "data/processed_unified/"  # trailing slash prevents matching processed_unified_packed
 DST_PREFIX          = "data/processed_unified_packed"
 SEGMENTS_PER_SHARD  = 1024
 REGION              = os.environ.get("AWS_REGION", "us-east-2")
