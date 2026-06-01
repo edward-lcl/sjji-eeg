@@ -140,7 +140,7 @@ def build_data_inputs(channels: list[str], bucket: str, job_preset: str = "") ->
         inputs[ch] = TrainingInput(
             s3_data=uri,
             s3_data_type="S3Prefix",
-            input_mode="FastFile" if (ch in ("tuh_eeg", "processed_unified") or job_preset == "preprocess") else "File",
+            input_mode="FastFile" if (ch in ("tuh_eeg", "processed_unified", "processed_unified_packed") or job_preset == "preprocess") else "File",
         )
         print(f"  data[{ch}]: {uri}")
     return inputs
