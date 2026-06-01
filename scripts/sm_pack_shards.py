@@ -84,13 +84,14 @@ def pack_group(args):
     errors = 0
 
     buffer = []
+    buffer_shape = None  # (C, T) — flush when shape changes
     shard_idx = 0
 
     def flush(buf):
         nonlocal shard_idx, total_shards, total_segments
         if not buf:
             return
-        arr = np.concatenate(buf, axis=0)
+        arr = np.concatenate(buf, axis=0)  # safe: all same (C, T)
         # Include group_key hash in name to avoid collisions across parallel workers
         import hashlib
         gkey = hashlib.md5(group_key.encode()).hexdigest()[:6]
@@ -113,13 +114,24 @@ def pack_group(args):
 
     for key in src_keys:
         try:
-            # Read from FastFile mount (appears as local path)
             local_path = os.path.join(DATA_DIR, key[len(SRC_PREFIX):].lstrip("/"))
             segs = np.load(local_path, mmap_mode="r")
-            buffer.append(segs[:])  # copy out of mmap before concatenating
+            data = segs[:]  # copy out of mmap
+
+            seg_shape = data.shape[1:]  # (C, T)
+            if buffer_shape is not None and seg_shape != buffer_shape:
+                # Channel/time mismatch — flush current buffer before mixing shapes
+                flush(buffer)
+                buffer = []
+                buffer_shape = None
+
+            buffer.append(data)
+            buffer_shape = seg_shape
+
             if sum(len(b) for b in buffer) >= SEGMENTS_PER_SHARD:
                 flush(buffer)
                 buffer = []
+                buffer_shape = None
         except Exception as e:
             errors += 1
 
