@@ -43,8 +43,8 @@ JOB_CONFIGS = {
         "instance":    "ml.g5.4xlarge",   # A10G 24GB VRAM
         "max_hours":   30,
         "spot":        True,               # safe: mid-epoch checkpoints enabled
-        "data_channels": ["processed_unified_packed"],
-        "description": "TUH-scale SimCLR SSL pretraining (packed shards, spot)",
+        "data_channels": ["processed_unified_sub400k"],
+        "description": "EEG VICReg SSL pretraining (400k subsample, File mode, spot)",
     },
     "pack": {
         "entry_point": "scripts/sm_pack_shards.py",
@@ -90,6 +90,7 @@ DATA_CHANNEL_S3_PREFIXES = {
     "labeled_pd":        "data/raw",           # includes ds002778 / ds003490 / ds004584
     "processed_unified":        "data/processed_unified",
     "processed_unified_packed": "data/processed_unified_packed",
+    "processed_unified_sub400k": "data/processed_unified_sub400k",
 }
 
 # Source code whitelist — keeps the upload small (no data, no __pycache__)

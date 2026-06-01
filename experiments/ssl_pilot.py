@@ -37,12 +37,13 @@ from baseline import DEVICE, BATCH_SIZE, LR, N_OUTER, PD_DATASET_IDS, load_all_d
 PRETRAIN_EPOCHS   = 100
 PRETRAIN_LR       = 2.5e-4
 PRETRAIN_BATCH    = 128   # safe on A10G 24GB with grad checkpointing
-MANIFEST_FILE     = "manifest_400k.json"  # subsample: 401k segs, 281 shards (~300GB)
+MANIFEST_FILE     = "manifest.json"  # sub400k prefix has its own manifest.json with 281 shards
 FINETUNE_EPOCHS   = 30   # shorter than supervised: encoder already has structure
 N_CHANNELS        = 64
 # SageMaker mounts packed channel first, fall back to unpacked for local dev
 PROCESSED_UNIFIED = (
-    os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED_PACKED")
+    os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED_SUB400K")
+    or os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED_PACKED")
     or os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED")
     or "data/processed_unified"
 )
