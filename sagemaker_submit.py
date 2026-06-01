@@ -48,7 +48,7 @@ JOB_CONFIGS = {
     },
     "pack": {
         "entry_point": "scripts/sm_pack_shards.py",
-        "instance":    "ml.c5.4xlarge",   # 16 vCPU, no GPU needed for I/O packing
+        "instance":    "ml.r5.4xlarge",   # 16 vCPU 128GB — proven quota; no GPU needed
         "max_hours":   6,
         "spot":        False,
         "data_channels": ["processed_unified"],
