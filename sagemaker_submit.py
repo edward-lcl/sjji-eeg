@@ -40,10 +40,19 @@ from sagemaker.inputs import TrainingInput
 JOB_CONFIGS = {
     "pretrain": {
         "entry_point": "experiments/ssl_pilot.py",
-        "instance":    "ml.g5.4xlarge",   # A10G 24GB VRAM — good for SimCLR at scale
+        "instance":    "ml.g5.4xlarge",   # A10G 24GB VRAM
         "max_hours":   30,
+        "spot":        True,               # safe: mid-epoch checkpoints enabled
+        "data_channels": ["processed_unified_packed"],
+        "description": "TUH-scale SimCLR SSL pretraining (packed shards, spot)",
+    },
+    "pack": {
+        "entry_point": "scripts/sm_pack_shards.py",
+        "instance":    "ml.c5.4xlarge",   # 16 vCPU, no GPU needed for I/O packing
+        "max_hours":   6,
+        "spot":        False,
         "data_channels": ["processed_unified"],
-        "description": "TUH-scale SimCLR SSL pretraining (domain-adversarial)",
+        "description": "Pack small .npy files into 1024-seg shards → processed_unified_packed",
     },
     "finetune": {
         "entry_point": "experiments/ssl_pilot.py",  # update when dedicated script exists
@@ -79,7 +88,8 @@ JOB_CONFIGS = {
 DATA_CHANNEL_S3_PREFIXES = {
     "tuh_eeg":           "data/raw/tuh_eeg",
     "labeled_pd":        "data/raw",           # includes ds002778 / ds003490 / ds004584
-    "processed_unified": "data/processed_unified",
+    "processed_unified":        "data/processed_unified",
+    "processed_unified_packed": "data/processed_unified_packed",
 }
 
 # Source code whitelist — keeps the upload small (no data, no __pycache__)
@@ -150,7 +160,7 @@ def main():
                    help="Override instance type")
     p.add_argument("--max-hours", type=int, default=None,
                    help="Override max runtime hours")
-    p.add_argument("--spot", action="store_true",
+    p.add_argument("--spot", action="store_true", default=None,
                    help="Use spot instances (60-70%% cheaper; script must support checkpoint resume)")
     p.add_argument("--no-wait", action="store_true",
                    help="Submit async; poll with describe-training-job")
@@ -161,9 +171,10 @@ def main():
     args = p.parse_args()
 
     cfg = JOB_CONFIGS[args.job]
-    entry_point  = args.entry_point or cfg["entry_point"]
-    instance     = args.instance    or cfg["instance"]
-    max_hours    = args.max_hours   or cfg["max_hours"]
+    entry_point   = args.entry_point or cfg["entry_point"]
+    instance      = args.instance    or cfg["instance"]
+    max_hours     = args.max_hours   or cfg["max_hours"]
+    use_spot      = args.spot if args.spot is not None else cfg.get("spot", False)
     data_channels = cfg["data_channels"]
 
     region   = os.environ.get("AWS_REGION", "us-east-2")
@@ -189,7 +200,7 @@ def main():
     print(f"  Job:      {job_name}")
     print(f"  Preset:   {args.job} — {cfg['description']}")
     print(f"  Entry:    {entry_point}")
-    print(f"  Instance: {instance}{' (spot)' if args.spot else ' (on-demand)'}")
+    print(f"  Instance: {instance}{' (spot)' if use_spot else ' (on-demand)'}")
     print(f"  Max run:  {max_hours}h")
     print(f"  Source:   {staging_dir}")
     print(f"  Region:   {region}  Bucket: {bucket}")
@@ -209,9 +220,9 @@ def main():
         instance_count=1,
         volume_size=150 if args.job == "preprocess" else 200,   # 150GB: GPU image ~40GB + working space; training: needs space for data copy
         max_run=max_hours * 3600,
-        use_spot_instances=args.spot,
-        max_wait=(max_hours * 3600 + 3600) if args.spot else None,
-        checkpoint_s3_uri=f"s3://{bucket}/checkpoints/{job_name}/" if args.spot else None,
+        use_spot_instances=use_spot,
+        max_wait=(max_hours * 3600 + 3600) if use_spot else None,
+        checkpoint_s3_uri=f"s3://{bucket}/checkpoints/{job_name}/" if use_spot else None,
         sagemaker_session=sess,
         output_path=f"s3://{bucket}/runs/{job_name}/output/",
         base_job_name="sjji-eeg",

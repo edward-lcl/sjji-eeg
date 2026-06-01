@@ -36,11 +36,15 @@ from baseline import DEVICE, BATCH_SIZE, LR, N_OUTER, PD_DATASET_IDS, load_all_d
 # --- Config ---
 PRETRAIN_EPOCHS   = 100
 PRETRAIN_LR       = 2.5e-4
-PRETRAIN_BATCH    = 256
+PRETRAIN_BATCH    = 512   # bumped from 256 — A10G 24GB handles it; halves batch count
 FINETUNE_EPOCHS   = 30   # shorter than supervised: encoder already has structure
 N_CHANNELS        = 64
-# SageMaker mounts channels at /opt/ml/input/data/<channel_name>/
-PROCESSED_UNIFIED = os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED", "data/processed_unified")
+# SageMaker mounts packed channel first, fall back to unpacked for local dev
+PROCESSED_UNIFIED = (
+    os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED_PACKED")
+    or os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED")
+    or "data/processed_unified"
+)
 ENCODER_PATH      = os.path.join(os.environ.get("SM_MODEL_DIR", "results/ssl"), "pretrained_encoder.pt")
 
 
