@@ -213,8 +213,14 @@ def main():
 
     sess = sagemaker.Session(boto_session=boto3.Session(region_name=region))
 
+    metric_definitions = [
+        {"Name": "train:loss",  "Regex": r"Epoch \d+: loss=(\S+)"},
+        {"Name": "train:epoch", "Regex": r"Epoch (\d+)/"},
+    ]
+
     estimator = Estimator(
         image_uri=image_uri,
+        metric_definitions=metric_definitions,
         role=role_arn,
         instance_type=instance,
         instance_count=1,
