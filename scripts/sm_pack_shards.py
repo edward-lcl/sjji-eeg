@@ -48,18 +48,34 @@ def list_npy_keys(s3, prefix: str) -> list[str]:
 
 
 def group_by_dataset(keys: list[str], src_prefix: str) -> dict[str, list[str]]:
-    """Group S3 keys by top-level dataset folder (tuh_eeg, ds002778, etc.)."""
+    """
+    Group S3 keys by shard group key.
+
+    For large datasets (tuh_eeg), split by the second path level (subdirectory
+    within the dataset) so all 16 workers get real parallel work instead of one
+    worker handling the entire TUH corpus sequentially.
+
+    Small datasets (ds002778 etc.) are kept as a single group — they're tiny.
+    """
+    # Datasets large enough to warrant sub-grouping
+    LARGE_DATASETS = {"tuh_eeg"}
+
     groups: dict[str, list[str]] = {}
     for key in keys:
         rel = key[len(src_prefix):].lstrip("/")
-        dataset = rel.split("/")[0]
-        groups.setdefault(dataset, []).append(key)
+        parts = rel.split("/")
+        dataset = parts[0]
+        if dataset in LARGE_DATASETS and len(parts) > 1:
+            group_key = f"{dataset}/{parts[1]}"  # e.g. tuh_eeg/022
+        else:
+            group_key = dataset
+        groups.setdefault(group_key, []).append(key)
     return groups
 
 
 def pack_group(args):
     """Pack one group of source keys into shards, upload to S3."""
-    dataset, src_keys, dst_prefix, existing_dst_keys = args
+    dataset, src_keys, dst_prefix, existing_dst_keys, group_key = args
     s3 = boto3.client("s3", region_name=REGION)
     existing = set(existing_dst_keys)
 
@@ -75,7 +91,10 @@ def pack_group(args):
         if not buf:
             return
         arr = np.concatenate(buf, axis=0)
-        dst_key = f"{dst_prefix}/{dataset}/shard_{shard_idx:05d}.npy"
+        # Include group_key hash in name to avoid collisions across parallel workers
+        import hashlib
+        gkey = hashlib.md5(group_key.encode()).hexdigest()[:6]
+        dst_key = f"{dst_prefix}/{dataset}/shard_{gkey}_{shard_idx:05d}.npy"
         shard_idx += 1
 
         if dst_key in existing:
@@ -137,12 +156,18 @@ def main():
     groups = group_by_dataset(src_keys, SRC_PREFIX)
     dst_groups = group_by_dataset(dst_keys, DST_PREFIX)
 
+    # Normalize group key to top-level dataset name for output path
+    # (tuh_eeg/022 writes shards under tuh_eeg/, not tuh_eeg/022/)
+    def dst_dataset(group_key):
+        return group_key.split("/")[0]
+
     args = [
-        (dataset, keys, DST_PREFIX, dst_groups.get(dataset, []))
-        for dataset, keys in sorted(groups.items())
+        (dst_dataset(group_key), keys, DST_PREFIX, dst_groups.get(dst_dataset(group_key), []), group_key)
+        for group_key, keys in sorted(groups.items())
     ]
 
-    print(f"\nDatasets: {[a[0] for a in args]}")
+    n_tuh = sum(1 for g in groups if g.startswith("tuh_eeg/"))
+    print(f"\n{len(args)} worker groups ({n_tuh} TUH subgroups + {len(args)-n_tuh} small datasets)")
     print("Starting packing...\n")
 
     start = time.time()
