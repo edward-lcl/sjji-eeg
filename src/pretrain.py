@@ -23,16 +23,15 @@ class UnlabeledEEGDataset(Dataset):
     Loads preprocessed .npy segment files from a directory tree.
 
     Fast path: reads manifest.json (file → segment count) instead of opening
-    every file. Generate manifest.json with scripts/build_manifest.py and
-    upload it alongside the data before training.
+    every file. Pass manifest_name to use a subsample manifest.
     """
 
-    def __init__(self, data_dir: str, n_channels: int = None):
+    def __init__(self, data_dir: str, n_channels: int = None, manifest_name: str = None):
         self.n_channels = n_channels
         self.files = []
         self.lengths = []
 
-        manifest_path = Path(data_dir) / MANIFEST_FILE
+        manifest_path = Path(data_dir) / (manifest_name or MANIFEST_FILE)
         if manifest_path.exists():
             print(f"[dataset] Loading manifest from {manifest_path}")
             with open(manifest_path) as f:
@@ -140,6 +139,40 @@ def eeg_augment_batch(x: torch.Tensor) -> torch.Tensor:
     return x
 
 
+def vicreg_loss(z1: torch.Tensor, z2: torch.Tensor,
+                lam: float = 25.0, mu: float = 25.0, nu: float = 1.0) -> torch.Tensor:
+    """
+    VICReg loss (Bardes et al. 2022).
+    lam=invariance, mu=variance, nu=covariance.
+    Works well at small batch sizes (no large negative pool needed).
+    """
+    N, D = z1.shape
+
+    # Invariance
+    inv = nn.functional.mse_loss(z1, z2)
+
+    # Variance — push std above 1 per dimension
+    z1 = z1 - z1.mean(0)
+    z2 = z2 - z2.mean(0)
+    std1 = torch.sqrt(z1.var(0) + 1e-4)
+    std2 = torch.sqrt(z2.var(0) + 1e-4)
+    var = (torch.mean(nn.functional.relu(1 - std1)) +
+           torch.mean(nn.functional.relu(1 - std2))) / 2
+
+    # Covariance — decorrelate dimensions
+    cov1 = (z1.T @ z1) / (N - 1)
+    cov2 = (z2.T @ z2) / (N - 1)
+    cov = (off_diagonal(cov1).pow(2).sum() +
+           off_diagonal(cov2).pow(2).sum()) / D
+
+    return lam * inv + mu * var + nu * cov
+
+
+def off_diagonal(x: torch.Tensor) -> torch.Tensor:
+    n = x.shape[0]
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+
 def pretrain_simclr(
     encoder: nn.Module,
     data_dir: str,
@@ -151,6 +184,7 @@ def pretrain_simclr(
     patience: int = 30,
     device: str = "auto",
     n_channels: int = None,
+    manifest_name: str = None,
 ):
     if device == "auto":
         device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
@@ -168,7 +202,7 @@ def pretrain_simclr(
     use_cuda = device.startswith("cuda")
     n_workers = 8 if use_cuda else 0
 
-    dataset = UnlabeledEEGDataset(data_dir, n_channels=n_channels)
+    dataset = UnlabeledEEGDataset(data_dir, n_channels=n_channels, manifest_name=manifest_name)
     sampler = FileGroupedSampler(dataset, epoch=0)
     loader = DataLoader(
         dataset,
@@ -185,16 +219,7 @@ def pretrain_simclr(
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr * 0.01)
     scaler = torch.amp.GradScaler("cuda", enabled=use_cuda)
 
-    def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temp: float) -> torch.Tensor:
-        z1 = nn.functional.normalize(z1, dim=1)
-        z2 = nn.functional.normalize(z2, dim=1)
-        z = torch.cat([z1, z2], dim=0)
-        sim = torch.mm(z, z.T) / temp
-        N = z1.shape[0]
-        labels = torch.cat([torch.arange(N, 2 * N), torch.arange(N)]).to(device)
-        mask = torch.eye(2 * N, dtype=torch.bool, device=device)
-        sim.masked_fill_(mask, float("-inf"))
-        return nn.functional.cross_entropy(sim, labels)
+    print(f"Using VICReg loss (no large-batch negatives required)")
 
     best_loss = float("inf")
     no_improve = 0
@@ -246,7 +271,7 @@ def pretrain_simclr(
                 x2 = eeg_augment_batch(x)
                 z1 = projector(encoder(x1))
                 z2 = projector(encoder(x2))
-                loss = nt_xent_loss(z1, z2, temperature)
+                loss = vicreg_loss(z1, z2)
 
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()

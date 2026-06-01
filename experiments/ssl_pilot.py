@@ -36,7 +36,8 @@ from baseline import DEVICE, BATCH_SIZE, LR, N_OUTER, PD_DATASET_IDS, load_all_d
 # --- Config ---
 PRETRAIN_EPOCHS   = 100
 PRETRAIN_LR       = 2.5e-4
-PRETRAIN_BATCH    = 128   # A10G 24GB OOMs at 512 and 256 with transformer; 128 is safe
+PRETRAIN_BATCH    = 128   # safe on A10G 24GB with grad checkpointing
+MANIFEST_FILE     = "manifest_400k.json"  # subsample: 401k segs, 281 shards (~300GB)
 FINETUNE_EPOCHS   = 30   # shorter than supervised: encoder already has structure
 N_CHANNELS        = 64
 # SageMaker mounts packed channel first, fall back to unpacked for local dev
@@ -111,6 +112,7 @@ def run_ssl_pilot():
             patience=20,
             device=DEVICE,
             n_channels=N_CHANNELS,
+            manifest_name=MANIFEST_FILE,
         )
         print(f"  Encoder saved to {ENCODER_PATH}")
 

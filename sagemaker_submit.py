@@ -140,7 +140,7 @@ def build_data_inputs(channels: list[str], bucket: str, job_preset: str = "") ->
         inputs[ch] = TrainingInput(
             s3_data=uri,
             s3_data_type="S3Prefix",
-            input_mode="FastFile" if (ch in ("tuh_eeg", "processed_unified", "processed_unified_packed") or job_preset == "preprocess") else "File",
+            input_mode="FastFile" if (ch in ("tuh_eeg", "processed_unified") or job_preset == "preprocess") else "File",
         )
         print(f"  data[{ch}]: {uri}")
     return inputs
@@ -224,7 +224,7 @@ def main():
         role=role_arn,
         instance_type=instance,
         instance_count=1,
-        volume_size=150 if args.job == "preprocess" else 200,   # 150GB: GPU image ~40GB + working space; training: needs space for data copy
+        volume_size=150 if args.job == "preprocess" else 600,   # 600GB: 400k subsample ~300GB shards + GPU image ~40GB + working space
         max_run=max_hours * 3600,
         use_spot_instances=use_spot,
         max_wait=(max_hours * 3600 + 3600) if use_spot else None,
