@@ -84,6 +84,17 @@ pip install -r requirements.txt
 
 Local runs use `data/processed_unified/` by default. SageMaker mounts use `SM_CHANNEL_*` env vars.
 
+## Post-Training TODO (after pretraining completes)
+
+- [ ] Linear probe evaluation — per-dataset balanced accuracy vs supervised baseline
+- [ ] Cross-dataset generalization — leave-one-dataset-out eval
+- [ ] UMAP/t-SNE of encoder embeddings — visualize PD vs HC separation in latent space
+- [ ] Clinical correlation — do embeddings correlate with UPDRS severity scores?
+- [ ] Ablation — supervised encoder vs SSL encoder feature quality comparison
+- [ ] Paper writeup
+
+---
+
 ## Key Results So Far
 
 | Experiment | Balanced Accuracy |
