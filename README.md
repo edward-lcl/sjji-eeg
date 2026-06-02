@@ -1,85 +1,99 @@
 # SJJI — SSL-Enhanced TransformEEG for Parkinson's Disease Detection
 
-Self-supervised pretraining of TransformEEG on unlabeled EEG data (TUH-EEG corpus) followed by fine-tuning on labeled Parkinson's disease EEG datasets.
+Self-supervised pretraining of a TransformEEG encoder on the TUH EEG corpus (~8M segments), followed by linear probe evaluation on four labeled Parkinson's disease EEG datasets.
 
 ## Research Question
 
-Can self-supervised pretraining improve the generalizability of TransformEEG for Parkinson's disease detection?
+Can self-supervised pretraining (VICReg) improve cross-dataset generalizability of a TransformEEG encoder for Parkinson's disease detection?
+
+## Current Status
+
+**Pretraining is running.** VICReg on 400k TUH segments, spot g5.4xlarge (A10G 24GB), ~21 min/epoch. Loss trending down. Next: linear probe evaluation → cross-dataset eval → paper.
+
+| Phase | Status |
+|---|---|
+| TUH preprocessing (75k EDF → .npy) | ✅ Done |
+| Shard packing (8M segs → 5,442 shards) | ✅ Done |
+| Supervised baseline (TransformEEG) | ✅ Done — **53.8% balanced accuracy** |
+| VICReg SSL pretraining | 🔄 Running |
+| Linear probe evaluation | ⏳ Pending |
+| Cross-dataset generalization eval | ⏳ Pending |
+| Paper | ⏳ Pending |
 
 ## Datasets
 
 **Pretraining (unlabeled):**
-- TUH-EEG Corpus — Temple University Hospital (requires access request)
-- Fallback: OpenNeuro general EEG datasets
+- TUH-EEG Corpus — Temple University Hospital (~75k recordings, requires access request)
 
-**Fine-tuning (labeled PD):**
-- ds004148 — EEG test-retest
-- ds002778 — UC San Diego Parkinson's
-- ds003490 — EEG 3-Stim
-- ds004584 — Parkinson's EEG dataset
+**Evaluation (labeled PD vs HC):**
+- [ds004148](https://openneuro.org/datasets/ds004148) — EEG test-retest
+- [ds002778](https://openneuro.org/datasets/ds002778) — UC San Diego Parkinson's
+- [ds003490](https://openneuro.org/datasets/ds003490) — EEG 3-Stim
+- [ds004584](https://openneuro.org/datasets/ds004584) — Parkinson's EEG dataset
 
 ## Method
 
-1. Wrap TransformEEG encoder with SelfEEG's SimCLR contrastive learning
-2. Pretrain on large unlabeled EEG corpus (TUH-EEG)
-3. Fine-tune on 4 labeled PD datasets (same as original TransformEEG paper)
-4. Evaluate: balanced accuracy, sensitivity, specificity vs TransformEEG baseline
+1. **Preprocess** — MNE pipeline: bandpass 0.5–45Hz, resample 128Hz, 4s windows, 64 channels
+2. **Pack** — Small .npy files → large shards for efficient S3 training
+3. **Pretrain** — VICReg SSL on 400k TUH segments (encoder learns EEG structure, no labels)
+4. **Evaluate** — Freeze encoder, train linear probe on labeled PD data (N-LNSO cross-validation)
+5. **Cross-dataset eval** — Train on 3 datasets, test on held-out 4th
 
-## Structure
+## Architecture
 
-```
-data/
-  raw/          # downloaded datasets (gitignored)
-  processed/    # preprocessed .npy arrays
-src/
-  preprocess.py # MNE-based preprocessing pipeline
-  model.py      # TransformEEG encoder + SSL wrapper
-  pretrain.py   # SimCLR pretraining loop
-  finetune.py   # supervised fine-tuning + N-LNSO CV
-  evaluate.py   # metrics: balanced acc, sensitivity, specificity
-  utils.py
-notebooks/
-  explore.ipynb
-configs/
-  pretrain.yaml
-  finetune.yaml
-results/        # experiment outputs (gitignored)
-```
+TransformEEG (Del Pup et al. 2025): depthwise Conv1D tokenizer → 2-layer Transformer encoder → adaptive pooling → 244-dim embeddings.
 
-## Setup
+SSL head: 2-layer MLP projector (244 → 244 → 128), VICReg loss (invariance + variance + covariance terms).
+
+## Infrastructure
+
+All training runs on AWS SageMaker (spot g5.4xlarge). Data lives in S3 (`sagemaker-us-east-2-506145782110`). Submit jobs via:
 
 ```bash
-python3 -m venv venv
 source venv/bin/activate
+python sagemaker_submit.py --job pretrain   # VICReg pretraining
+python sagemaker_submit.py --job ssl_pilot  # full eval pipeline
+```
+
+See `skills/sagemaker-ml-training/SKILL.md` for gotchas, quota info, and lessons learned.
+
+## Repo Structure
+
+```
+experiments/
+  ssl_pilot.py          # main: pretrain → linear probe → cross-dataset eval
+  baseline.py           # supervised TransformEEG baseline
+scripts/
+  sm_pack_shards.py     # pack .npy files into large shards (SageMaker job)
+  sm_preprocess.py      # TUH preprocessing (SageMaker job)
+  build_subsample_manifest.py  # sample 400k segments from full corpus
+src/
+  model.py              # TransformEEG encoder + EEGClassifier
+  pretrain.py           # VICReg training loop, FileGroupedSampler, checkpointing
+  finetune.py           # linear probe training + eval
+sagemaker_submit.py     # submit/configure SageMaker training jobs
+requirements.txt
+```
+
+## Setup (local dev)
+
+```bash
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Running Long Experiments
+Local runs use `data/processed_unified/` by default. SageMaker mounts use `SM_CHANNEL_*` env vars.
 
-Run experiments through the Mac watchdog so crashes and stalls are visible:
+## Key Results So Far
 
-```bash
-./venv/bin/python scripts/mac_experiment_watchdog.py --name baseline_native -- ./venv/bin/python -u baseline.py
-```
-
-For overnight runs, install the watchdog as a macOS LaunchAgent:
-
-```bash
-./venv/bin/python scripts/mac_launch_experiment.py --name baseline_native --load -- ./venv/bin/python -u baseline.py
-```
-
-See [docs/EXPERIMENT_WATCHDOG.md](docs/EXPERIMENT_WATCHDOG.md).
-
-Start the local control console:
-
-```bash
-./venv/bin/python scripts/mac_launch_console.py --load --port 8765
-```
-
-Open `http://127.0.0.1:8765` to inspect watchdog status, events, and logs.
+| Experiment | Balanced Accuracy |
+|---|---|
+| Supervised baseline (TransformEEG) | 53.8% |
+| SSL linear probe (VICReg) | 🔄 running |
+| Cross-dataset SSL | 🔄 running |
 
 ## References
 
-- TransformEEG: Del Pup et al. (2025), Neurocomputing. <https://github.com/MedMaxLab/TransformEEG>
-- SelfEEG: Del Pup et al. (2024). <https://github.com/MedMaxLab/selfEEG>
-- SSL for EEG survey: Weng et al. (2024)
+- TransformEEG: Del Pup et al. (2025), Neurocomputing — [GitHub](https://github.com/MedMaxLab/TransformEEG)
+- VICReg: Bardes et al. (2022), Meta AI — [Paper](https://arxiv.org/abs/2105.04906)
+- TUH EEG Corpus: Obeid & Picone (2016)
