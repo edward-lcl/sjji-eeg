@@ -313,7 +313,7 @@ def pretrain_simclr(
                 print(f"Early stopping at epoch {epoch}")
                 break
 
-        if epoch % 5 == 0:
+        if epoch % 2 == 0:
             ckpt_dir.mkdir(parents=True, exist_ok=True)
             torch.save({
                 "epoch": epoch,

@@ -228,7 +228,7 @@ def main():
         volume_size=150 if args.job == "preprocess" else 600,   # 600GB: 400k subsample ~300GB shards + GPU image ~40GB + working space
         max_run=max_hours * 3600,
         use_spot_instances=use_spot,
-        max_wait=(max_hours * 3600 + 3600) if use_spot else None,
+        max_wait=(max_hours * 3600 + 14400) if use_spot else None,  # 4h buffer for spot interruptions
         checkpoint_s3_uri=f"s3://{bucket}/checkpoints/{job_name}/" if use_spot else None,
         sagemaker_session=sess,
         output_path=f"s3://{bucket}/runs/{job_name}/output/",
