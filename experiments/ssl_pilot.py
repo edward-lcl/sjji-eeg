@@ -124,6 +124,9 @@ def run_ssl_pilot():
         )
         print(f"  Encoder saved to {ENCODER_PATH}")
 
+    # Always reload best saved weights — encoder in memory after training is
+    # the last epoch's weights, not the best. On LR-reset resumes this is corrupted.
+    encoder.load_state_dict(torch.load(ENCODER_PATH, map_location="cpu"))
     encoder = encoder.to(DEVICE)
 
     # ── Phase 2: Per-dataset linear probe ─────────────────────────

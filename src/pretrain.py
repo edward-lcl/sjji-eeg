@@ -255,6 +255,8 @@ def pretrain_simclr(
         encoder.load_state_dict(ckpt["encoder"])
         projector.load_state_dict(ckpt["projector"])
         optimizer.load_state_dict(ckpt["optimizer"])
+        if "scheduler" in ckpt:
+            scheduler.load_state_dict(ckpt["scheduler"])
         start_epoch = ckpt["epoch"] + 1
         best_loss = ckpt["best_loss"]
         no_improve = ckpt["no_improve"]
@@ -341,6 +343,7 @@ def pretrain_simclr(
                 "encoder": encoder.state_dict(),
                 "projector": projector.state_dict(),
                 "optimizer": optimizer.state_dict(),
+                "scheduler": scheduler.state_dict(),
                 "best_loss": best_loss,
                 "no_improve": no_improve,
             }, ckpt_path)
