@@ -185,7 +185,7 @@ def main():
         "arn:aws:iam::506145782110:role/service-role/AmazonSageMaker-ExecutionRole-20260509T231091",
     )
 
-    job_name = args.job_name or f"sjji-eeg-{args.job}-{int(time.time())}"
+    job_name = args.job_name or f"sjji-eeg-{args.job.replace('_', '-')}-{int(time.time())}"
 
     # PyTorch 2.4 DLC (CUDA 12.4). Works for SimCLR + MNE post-processing.
     # Upgrade: https://github.com/aws/deep-learning-containers/blob/master/available_images.md
@@ -225,7 +225,7 @@ def main():
         role=role_arn,
         instance_type=instance,
         instance_count=1,
-        volume_size=150 if args.job == "preprocess" else 600,   # 600GB: 400k subsample ~300GB shards + GPU image ~40GB + working space
+        volume_size=150 if args.job == "preprocess" else (200 if instance == "ml.g5.xlarge" else 600),   # g5.xlarge local storage cap is 250GB; larger instances get 600GB
         max_run=max_hours * 3600,
         use_spot_instances=use_spot,
         max_wait=(max_hours * 3600 + 14400) if use_spot else None,  # 4h buffer for spot interruptions
