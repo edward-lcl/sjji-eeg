@@ -47,10 +47,7 @@ PROCESSED_UNIFIED = (
     or os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED")
     or "data/processed_unified"
 )
-LABELED_PD = (
-    os.environ.get("SM_CHANNEL_LABELED_PD")
-    or "data/raw"
-)
+
 ENCODER_PATH      = os.path.join(os.environ.get("SM_MODEL_DIR", "results/ssl"), "pretrained_encoder.pt")
 
 
@@ -125,7 +122,7 @@ def run_ssl_pilot():
 
     # ── Phase 2: Per-dataset linear probe ─────────────────────────
     print("\nPHASE 2: Per-dataset linear probe (N-LNSO, frozen encoder)")
-    datasets = load_all_datasets(LABELED_PD)
+    datasets = load_all_datasets(PROCESSED_UNIFIED)
     per_dataset_results = {}
 
     for ds_id in PD_DATASET_IDS:

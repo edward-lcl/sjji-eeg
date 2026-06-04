@@ -79,7 +79,7 @@ JOB_CONFIGS = {
         "entry_point": "experiments/ssl_pilot.py",
         "instance":    "ml.g5.xlarge",
         "max_hours":   4,
-        "data_channels": ["processed_unified", "labeled_pd"],
+        "data_channels": ["processed_unified"],
         "description": "Quick SSL pilot (no TUH, use pre-processed segments only)",
     },
 }
@@ -87,7 +87,7 @@ JOB_CONFIGS = {
 # S3 data channel prefixes — must match the S3 layout described above
 DATA_CHANNEL_S3_PREFIXES = {
     "tuh_eeg":           "data/raw/tuh_eeg",
-    "labeled_pd":        "data/raw",           # includes ds002778 / ds003490 / ds004584
+    "labeled_pd":        "data/raw/ds",        # prefix-matches ds002778/ds003490/ds004148/ds004584 — excludes tuh_eeg
     "processed_unified":        "data/processed_unified",
     "processed_unified_packed": "data/processed_unified_packed",
     "processed_unified_sub400k": "data/processed_unified_sub400k",
