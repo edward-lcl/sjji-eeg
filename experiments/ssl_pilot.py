@@ -41,10 +41,16 @@ MANIFEST_FILE     = "manifest.json"  # sub400k prefix has its own manifest.json 
 FINETUNE_EPOCHS   = 30   # shorter than supervised: encoder already has structure
 N_CHANNELS        = 64
 # SageMaker mounts packed channel first, fall back to unpacked for local dev
+# Sub400k packed shards used for Phase 1 pretraining (fast, File mode)
 PROCESSED_UNIFIED = (
     os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED_SUB400K")
     or os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED_PACKED")
     or os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED")
+    or "data/processed_unified"
+)
+# Full processed_unified used for Phase 2/3 (has labels.csv per dataset, FastFile)
+LABELED_BASE = (
+    os.environ.get("SM_CHANNEL_PROCESSED_UNIFIED")
     or "data/processed_unified"
 )
 
@@ -122,7 +128,7 @@ def run_ssl_pilot():
 
     # ── Phase 2: Per-dataset linear probe ─────────────────────────
     print("\nPHASE 2: Per-dataset linear probe (N-LNSO, frozen encoder)")
-    datasets = load_all_datasets(PROCESSED_UNIFIED)
+    datasets = load_all_datasets(LABELED_BASE)
     per_dataset_results = {}
 
     for ds_id in PD_DATASET_IDS:

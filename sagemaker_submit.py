@@ -77,10 +77,10 @@ JOB_CONFIGS = {
     },
     "ssl_pilot": {
         "entry_point": "experiments/ssl_pilot.py",
-        "instance":    "ml.g5.xlarge",
-        "max_hours":   4,
-        "data_channels": ["processed_unified"],
-        "description": "Quick SSL pilot (no TUH, use pre-processed segments only)",
+        "instance":    "ml.g5.4xlarge",
+        "max_hours":   6,
+        "data_channels": ["processed_unified_sub400k", "processed_unified"],
+        "description": "Quick SSL pilot — sub400k for pretrain (~21min/epoch), processed_unified FastFile for Phase 2 labels",
     },
 }
 
