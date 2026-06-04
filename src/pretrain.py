@@ -10,11 +10,31 @@ import numpy as np
 from pathlib import Path
 from torch.utils.data import Dataset, DataLoader, Sampler
 from tqdm import tqdm
+try:
+    import boto3 as _boto3
+except ImportError:
+    _boto3 = None
 
 
 MANIFEST_FILE = "manifest.json"
 _EPOCH_CKPT = "simclr_checkpoint.pt"
 _MID_CKPT = "simclr_mid_epoch.pt"
+
+
+def _s3_upload_best(local_path, best_loss, epoch):
+    """Upload best encoder to S3 immediately so a job failure can't wipe it."""
+    if _boto3 is None:
+        return
+    bucket = os.environ.get("S3_BUCKET")
+    job_name = os.environ.get("TRAINING_JOB_NAME") or os.environ.get("SM_JOB_NAME") or os.environ.get("SAGEMAKER_JOB_NAME", "local")
+    if not bucket:
+        return
+    key = f"model-artifacts/{job_name}/pretrained_encoder_best.pt"
+    try:
+        _boto3.client("s3").upload_file(str(local_path), bucket, key)
+        print(f"[s3] Best encoder uploaded → s3://{bucket}/{key} (epoch={epoch} loss={best_loss:.4f})")
+    except Exception as e:
+        print(f"[s3] Upload failed (non-fatal): {e}")
 _CKPT_EVERY = 500  # save mid-epoch checkpoint every N batches
 
 
@@ -294,11 +314,11 @@ def pretrain_simclr(
                 }, mid_ckpt_path)
 
         # After each epoch, clear mid-epoch checkpoint (it's stale now)
+        n_batches = len(loader) - (mid_start_batch if epoch == start_epoch else 0)
         if mid_ckpt_path.exists():
             mid_ckpt_path.unlink()
         mid_start_batch = 0  # reset for next epoch
 
-        n_batches = len(loader) - (mid_start_batch if epoch == start_epoch else 0)
         avg_loss = total_loss / max(n_batches, 1)
         scheduler.step()
         print(f"Epoch {epoch}: loss={avg_loss:.4f}")
@@ -307,6 +327,7 @@ def pretrain_simclr(
             best_loss = avg_loss
             no_improve = 0
             torch.save(encoder.state_dict(), output_path)
+            _s3_upload_best(output_path, best_loss, epoch)
         else:
             no_improve += 1
             if no_improve >= patience:
