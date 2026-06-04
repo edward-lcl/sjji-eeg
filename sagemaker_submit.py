@@ -79,7 +79,7 @@ JOB_CONFIGS = {
         "entry_point": "experiments/ssl_pilot.py",
         "instance":    "ml.g5.xlarge",
         "max_hours":   4,
-        "data_channels": ["processed_unified"],
+        "data_channels": ["processed_unified", "labeled_pd"],
         "description": "Quick SSL pilot (no TUH, use pre-processed segments only)",
     },
 }
