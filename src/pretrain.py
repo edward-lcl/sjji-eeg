@@ -242,6 +242,7 @@ def pretrain_simclr(
     print(f"Using VICReg loss (no large-batch negatives required)")
 
     best_loss = float("inf")
+    best_encoder_state = None  # track best in memory so output_path is always writable
     no_improve = 0
     start_epoch = 1
 
@@ -260,6 +261,7 @@ def pretrain_simclr(
         start_epoch = ckpt["epoch"] + 1
         best_loss = ckpt["best_loss"]
         no_improve = ckpt["no_improve"]
+        best_encoder_state = {k: v.clone() for k, v in encoder.state_dict().items()}
         print(f"[ckpt] Resumed epoch checkpoint at epoch {ckpt['epoch']} (loss={best_loss:.4f})")
 
     # Restore from mid-epoch checkpoint if it belongs to start_epoch
@@ -328,7 +330,8 @@ def pretrain_simclr(
         if avg_loss < best_loss - 1e-4:
             best_loss = avg_loss
             no_improve = 0
-            torch.save(encoder.state_dict(), output_path)
+            best_encoder_state = {k: v.clone() for k, v in encoder.state_dict().items()}
+            torch.save(best_encoder_state, output_path)
             _s3_upload_best(output_path, best_loss, epoch)
         else:
             no_improve += 1
@@ -348,4 +351,10 @@ def pretrain_simclr(
                 "no_improve": no_improve,
             }, ckpt_path)
 
+    # Always ensure output_path exists — if we resumed and didn't improve,
+    # best_encoder_state holds the checkpoint weights (last known best)
+    if best_encoder_state is not None and not Path(output_path).exists():
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        torch.save(best_encoder_state, output_path)
+        print(f"[ckpt] No improvement this run — wrote checkpoint weights to {output_path}")
     print(f"Pretraining done. Best loss: {best_loss:.4f}. Weights → {output_path}")

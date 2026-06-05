@@ -62,7 +62,7 @@ def get_n_channels(dataset):
 
 
 def linear_probe_train_eval(encoder, train_samples, test_samples, n_channels):
-    """Freeze encoder, train + eval linear head only."""
+    """Freeze encoder, train a single linear head (true linear probe)."""
     train_ds = FlatDataset(train_samples, n_channels=n_channels)
     test_ds  = FlatDataset(test_samples,  n_channels=n_channels)
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
@@ -72,22 +72,40 @@ def linear_probe_train_eval(encoder, train_samples, test_samples, n_channels):
     n_hc = sum(1 for s in train_samples if s[1] == 0)
     pos_weight = torch.tensor([n_hc / max(n_pd, 1)], device=DEVICE)
 
-    model = EEGClassifier(encoder, nb_classes=2).to(DEVICE)
-    # Freeze encoder — only train the head
-    for param in model.encoder.parameters():
+    feat_dim = encoder.feat_dim
+    # True linear probe: frozen encoder + single linear layer, no hidden layers
+    encoder.eval()
+    for param in encoder.parameters():
         param.requires_grad = False
-    head_params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.Adam(head_params, lr=LR)
+    head = nn.Linear(feat_dim, 1).to(DEVICE)
+    optimizer = torch.optim.Adam(head.parameters(), lr=LR)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     for _ in range(FINETUNE_EPOCHS):
-        train_epoch(model, train_loader, optimizer, criterion, DEVICE)
+        head.train()
+        for x, y in train_loader:
+            x, y = x.to(DEVICE), y.float().to(DEVICE)
+            with torch.no_grad():
+                feats = encoder(x)
+            logits = head(feats).squeeze(-1)
+            loss = criterion(logits, y)
+            optimizer.zero_grad(); loss.backward(); optimizer.step()
 
-    preds, labels = eval_epoch(model, test_loader, DEVICE)
-    # Unfreeze for next fold (encoder gets re-used)
-    for param in model.encoder.parameters():
+    head.eval()
+    all_preds, all_labels = [], []
+    with torch.no_grad():
+        for x, y in test_loader:
+            x = x.to(DEVICE)
+            feats = encoder(x)
+            logits = head(feats).squeeze(-1)
+            preds = (torch.sigmoid(logits) > 0.5).long().cpu().numpy()
+            all_preds.extend(preds); all_labels.extend(y.numpy())
+
+    # Restore encoder for next fold
+    for param in encoder.parameters():
         param.requires_grad = True
-    return compute_metrics(preds, labels)
+    encoder.train()
+    return compute_metrics(all_preds, all_labels)
 
 
 def run_ssl_pilot():
