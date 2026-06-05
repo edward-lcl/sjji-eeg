@@ -44,7 +44,7 @@ JOB_CONFIGS = {
         "max_hours":   30,
         "spot":        True,               # safe: mid-epoch checkpoints enabled
         "data_channels": ["processed_unified_sub400k"],
-        "description": "EEG VICReg SSL pretraining (400k subsample, File mode, spot)",
+        "description": "EEG VICReg SSL pretraining (400k subsample, File mode NOT FastFile, spot)",
     },
     "pack": {
         "entry_point": "scripts/sm_pack_shards.py",
@@ -148,6 +148,10 @@ def build_data_inputs(channels: list[str], bucket: str, job_preset: str = "") ->
         inputs[ch] = TrainingInput(
             s3_data=uri,
             s3_data_type="S3Prefix",
+            # sub400k uses File mode — 381GB downloads to local NVMe before training starts.
+            # FastFile's lazy FUSE streaming causes 10-60s stalls per shard transition at this scale,
+            # pushing epoch time from ~25min to ~4h. File mode cold-start is ~20min; after that all reads
+            # are local. tuh_eeg and processed_unified stay FastFile (too large to fully download).
             input_mode="FastFile" if (ch in ("tuh_eeg", "processed_unified") or job_preset == "preprocess") else "File",
         )
         print(f"  data[{ch}]: {uri}")
