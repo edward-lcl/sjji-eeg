@@ -82,6 +82,13 @@ JOB_CONFIGS = {
         "data_channels": ["processed_unified_sub400k", "processed_unified"],
         "description": "Quick SSL pilot — sub400k for pretrain (~21min/epoch), processed_unified FastFile for Phase 2 labels",
     },
+    "ssl_pilot_ondemand": {
+        "entry_point": "experiments/ssl_pilot.py",
+        "instance":    "ml.g5.4xlarge",
+        "max_hours":   6,
+        "data_channels": ["processed_unified_sub400k", "processed_unified"],
+        "description": "ssl_pilot on-demand fallback when spot capacity is dry",
+    },
 }
 
 # S3 data channel prefixes — must match the S3 layout described above
@@ -229,7 +236,7 @@ def main():
         max_run=max_hours * 3600,
         use_spot_instances=use_spot,
         max_wait=(max_hours * 3600 + 14400) if use_spot else None,  # 4h buffer for spot interruptions
-        checkpoint_s3_uri=f"s3://{bucket}/checkpoints/{job_name}/" if use_spot else None,
+        checkpoint_s3_uri=f"s3://{bucket}/checkpoints/{job_name}/",  # always set — lets on-demand jobs resume from seeded checkpoints too
         sagemaker_session=sess,
         output_path=f"s3://{bucket}/runs/{job_name}/output/",
         base_job_name="sjji-eeg",
