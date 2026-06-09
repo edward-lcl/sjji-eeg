@@ -123,6 +123,48 @@ def run_ssl_pilot():
 
     encoder = build_encoder(Chan=N_CHANNELS)
 
+    # Support seeding a specific pretrained encoder from S3 (e.g. the e70 best from a prior long pretrain job).
+    # This lets us run *only* the probe phases (fast) without repeating the expensive pretrain.
+    # Set SEED_ENCODER_S3=s3://.../pretrained_encoder_best.pt in the job env (or via submitter).
+    # Support seeding from a local file path (for local probe runs without re-uploading to S3)
+    seed_local = os.environ.get("SEED_ENCODER_LOCAL")
+    if seed_local and Path(seed_local).exists() and not Path(ENCODER_PATH).exists():
+        import shutil
+        Path(ENCODER_PATH).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(seed_local, ENCODER_PATH)
+        print(f"  [seed-local] Copied encoder from {seed_local} — will skip pretrain and use for probes only")
+
+    seed_s3 = os.environ.get("SEED_ENCODER_S3")
+    if seed_s3 and not Path(ENCODER_PATH).exists():
+        try:
+            import boto3
+            from urllib.parse import urlparse
+            p = urlparse(seed_s3)
+            boto3.client("s3", region_name="us-east-2").download_file(p.netloc, p.path.lstrip("/"), ENCODER_PATH)
+            print(f"  [seed] Downloaded encoder from {seed_s3} — will skip pretrain and use for probes only")
+        except Exception as e:
+            print(f"  [seed] Failed to download seed encoder ({e}); will pretrain if needed")
+
+    # INIT (warm-start) vs SEED (final):
+    # INIT_ENCODER_S3: load weights into the encoder object for transfer, *but still run pretraining*
+    # on the (new/larger) data. Use this for full-scale runs warm-started from a good prior encoder (e.g. e70).
+    # Does not touch ENCODER_PATH (pretrain will save its own best there).
+    init_s3 = os.environ.get("INIT_ENCODER_S3")
+    if init_s3 and not Path(ENCODER_PATH).exists():
+        try:
+            import boto3
+            from urllib.parse import urlparse
+            import tempfile
+            p = urlparse(init_s3)
+            with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as tmp:
+                tmp_path = tmp.name
+            boto3.client("s3", region_name="us-east-2").download_file(p.netloc, p.path.lstrip("/"), tmp_path)
+            encoder.load_state_dict(torch.load(tmp_path, map_location="cpu"))
+            Path(tmp_path).unlink(missing_ok=True)
+            print(f"  [init] Warm-started encoder weights from {init_s3}; will CONTINUE pretraining on this data (not skip)")
+        except Exception as e:
+            print(f"  [init] Failed to init encoder from {init_s3}: {e}")
+
     if Path(ENCODER_PATH).exists():
         print(f"  Found existing encoder at {ENCODER_PATH}, loading...")
         encoder.load_state_dict(torch.load(ENCODER_PATH, map_location="cpu"))
@@ -150,9 +192,17 @@ def run_ssl_pilot():
     # ── Phase 2: Per-dataset linear probe ─────────────────────────
     print("\nPHASE 2: Per-dataset linear probe (N-LNSO, frozen encoder)")
     datasets = load_all_datasets(LABELED_BASE)
+    if not any(ds_id in datasets for ds_id in PD_DATASET_IDS):
+        print(f"  WARN: No labeled datasets found at {LABELED_BASE} — skipping probe phases.")
+        print(f"  Tip: the 'pretrain' job preset only mounts sub400k. Run ssl_pilot_ondemand with")
+        print(f"  --seed-encoder-s3 to evaluate a saved encoder against the full labeled data.")
+        return {"per_dataset": {}, "cross_dataset": {}}
     per_dataset_results = {}
 
     for ds_id in PD_DATASET_IDS:
+        if ds_id not in datasets:
+            print(f"  WARN: {ds_id} not found in {LABELED_BASE}, skipping")
+            continue
         ds = datasets[ds_id]
         n_channels = get_n_channels(ds)
         subjects = np.unique([s[2] for s in ds.samples])

@@ -43,8 +43,16 @@ JOB_CONFIGS = {
         "instance":    "ml.g5.4xlarge",   # A10G 24GB VRAM
         "max_hours":   30,
         "spot":        True,               # safe: mid-epoch checkpoints enabled
-        "data_channels": ["processed_unified_sub400k"],
-        "description": "EEG VICReg SSL pretraining (400k subsample, File mode NOT FastFile, spot)",
+        "data_channels": ["processed_unified_sub400k", "processed_unified"],
+        "description": "EEG VICReg SSL pretraining (400k subsample File mode) + probes on full labeled data (FastFile)",
+    },
+    "pretrain_full": {
+        "entry_point": "experiments/ssl_pilot.py",
+        "instance":    "ml.g5.4xlarge",
+        "max_hours":   48,                 # full TUH scale needs more time; use our resume support for safety
+        "spot":        True,
+        "data_channels": ["processed_unified_packed"],  # use packed for feasible FastFile I/O on full scale (fewer large shards)
+        "description": "Full TUH-scale SSL pretraining on packed data (warm-start from e70 or prior, spot, higher hours)",
     },
     "pack": {
         "entry_point": "scripts/sm_pack_shards.py",
@@ -180,6 +188,12 @@ def main():
                    help="Custom job name (default: sjji-eeg-<timestamp>)")
     p.add_argument("--dry-run", action="store_true",
                    help="Print config without submitting")
+    p.add_argument("--seed-encoder-s3", default=None,
+                   help="S3 URI to a pretrained_encoder_best.pt (e.g. from prior long pretrain). Skips pretrain phase for fast probes-only eval.")
+    p.add_argument("--init-encoder-s3", default=None,
+                   help="S3 URI to a pretrained_encoder_best.pt for warm-start (init weights but CONTINUE pretraining on this data). For full-scale runs.")
+    p.add_argument("--resume-ckpt-s3", default=None,
+                   help="S3 URI to simclr_checkpoint.pt from a prior pretrain job for full optimizer/scheduler/epoch resume.")
     args = p.parse_args()
 
     cfg = JOB_CONFIGS[args.job]
@@ -256,6 +270,10 @@ def main():
             # Point MNE/cache dirs at instance scratch
             "MNE_DATA":      "/tmp/mne",
             "RESULTS_DIR":   "/opt/ml/model",
+            # Optional seed/resume/init for continuing work without full re-runs or to warm-start full-scale from prior good encoder (e70)
+            "SEED_ENCODER_S3": args.seed_encoder_s3 or "",
+            "INIT_ENCODER_S3": args.init_encoder_s3 or "",
+            "PRETRAIN_RESUME_CKPT_S3": args.resume_ckpt_s3 or "",
         },
         tags=[
             {"Key": "project", "Value": "sjji-eeg"},

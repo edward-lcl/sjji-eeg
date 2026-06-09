@@ -216,14 +216,34 @@ def mode_cross_dataset(datasets):
 
 
 if __name__ == "__main__":
-    print(f"\nDevice: {DEVICE} | Epochs: {EPOCHS} | Batch: {BATCH_SIZE} | Folds: {N_OUTER}\n")
-    print("Loading datasets...")
-    datasets = load_all_datasets("data/processed")
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data-dir", default=None,
+                    help="Data directory for per-dataset mode (default: data/processed if it exists, else data/processed_unified)")
+    ap.add_argument("--unified-dir", default="data/processed_unified",
+                    help="Data directory for cross-dataset mode — must be 64-ch unified so all datasets share a channel count")
+    ap.add_argument("--mode", choices=["per_dataset", "cross_dataset", "both"], default="both")
+    args = ap.parse_args()
+
+    # Per-dataset mode: prefer native-channel data/processed; fall back to unified if not present
+    native_dir = args.data_dir or ("data/processed" if Path("data/processed").exists() else "data/processed_unified")
+    unified_dir = args.unified_dir
+
+    print(f"\nDevice: {DEVICE} | Epochs: {EPOCHS} | Batch: {BATCH_SIZE} | Folds: {N_OUTER}")
 
     all_results = {}
-    all_results["per_dataset"] = mode_per_dataset(datasets)
-    all_results["cross_dataset"] = mode_cross_dataset(datasets)
+
+    if args.mode in ("per_dataset", "both"):
+        print(f"\nLoading per-dataset data from: {native_dir}")
+        datasets_native = load_all_datasets(native_dir)
+        all_results["per_dataset"] = mode_per_dataset(datasets_native)
+
+    if args.mode in ("cross_dataset", "both"):
+        print(f"\nLoading cross-dataset data from: {unified_dir}")
+        datasets_unified = load_all_datasets(unified_dir)
+        all_results["cross_dataset"] = mode_cross_dataset(datasets_unified)
 
     Path("results/baseline").mkdir(parents=True, exist_ok=True)
-    save_results(all_results, "results/baseline", "supervised_baseline")
+    tag = "native" if Path("data/processed").exists() and args.data_dir is None else "unified"
+    save_results(all_results, "results/baseline", f"supervised_baseline_{tag}")
     print("\nAll done. Results saved.")

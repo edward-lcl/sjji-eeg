@@ -212,6 +212,25 @@ def pretrain_simclr(
     print(f"Pretraining on {device}")
     encoder = encoder.to(device)
 
+    ckpt_dir = Path(os.environ.get("SM_HP_CHECKPOINT_DIR", "/opt/ml/checkpoints"))
+    ckpt_path = ckpt_dir / _EPOCH_CKPT
+    mid_ckpt_path = ckpt_dir / _MID_CKPT
+
+    # Cross-job resume support: download full simclr_checkpoint.pt from a prior job's S3
+    # (e.g. after MaxWaitTimeExceeded on spot). The existing ckpt load logic below will pick it up.
+    resume_s3 = os.environ.get("PRETRAIN_RESUME_CKPT_S3")
+    if resume_s3 and _boto3 is not None:
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(resume_s3)
+            bkt = p.netloc
+            key = p.path.lstrip("/")
+            ckpt_dir.mkdir(parents=True, exist_ok=True)
+            _boto3.client("s3").download_file(bkt, key, str(ckpt_path))
+            print(f"[resume] Downloaded checkpoint from prior job {resume_s3} (will attempt full state restore)")
+        except Exception as e:
+            print(f"[resume] Could not fetch resume ckpt (starting fresh): {e}")
+
     feat_dim = encoder.feat_dim
     projector = nn.Sequential(
         nn.Linear(feat_dim, feat_dim),
@@ -236,7 +255,6 @@ def pretrain_simclr(
 
     params = list(encoder.parameters()) + list(projector.parameters())
     optimizer = torch.optim.Adam(params, lr=lr, betas=(0.9, 0.999))
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr * 0.01)
     scaler = torch.amp.GradScaler("cuda", enabled=use_cuda)
 
     print(f"Using VICReg loss (no large-batch negatives required)")
@@ -246,23 +264,26 @@ def pretrain_simclr(
     no_improve = 0
     start_epoch = 1
 
-    ckpt_dir = Path(os.environ.get("SM_HP_CHECKPOINT_DIR", "/opt/ml/checkpoints"))
-    ckpt_path = ckpt_dir / _EPOCH_CKPT
-    mid_ckpt_path = ckpt_dir / _MID_CKPT
-
     # Restore from epoch-level checkpoint (saved every 5 epochs)
+    resumed_epoch = -1
     if ckpt_path.exists():
         ckpt = torch.load(ckpt_path, map_location="cpu")
         encoder.load_state_dict(ckpt["encoder"])
         projector.load_state_dict(ckpt["projector"])
         optimizer.load_state_dict(ckpt["optimizer"])
-        if "scheduler" in ckpt:
-            scheduler.load_state_dict(ckpt["scheduler"])
         start_epoch = ckpt["epoch"] + 1
+        resumed_epoch = ckpt["epoch"]
         best_loss = ckpt["best_loss"]
         no_improve = ckpt["no_improve"]
         best_encoder_state = {k: v.clone() for k, v in encoder.state_dict().items()}
-        print(f"[ckpt] Resumed epoch checkpoint at epoch {ckpt['epoch']} (loss={best_loss:.4f})")
+        print(f"[ckpt] Resumed epoch checkpoint at epoch {ckpt['epoch']} (loss={best_loss:.4f}, no_improve={no_improve})")
+
+    # Build scheduler AFTER checkpoint restore so last_epoch reflects resume position.
+    # This ensures the LR is correct for the resumed epoch, not reset to epoch-1 LR.
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=epochs, eta_min=lr * 0.01,
+        last_epoch=resumed_epoch  # -1 = fresh start; ≥0 = restored LR for that epoch
+    )
 
     # Restore from mid-epoch checkpoint if it belongs to start_epoch
     mid_start_batch = 0
@@ -303,6 +324,12 @@ def pretrain_simclr(
             torch.nn.utils.clip_grad_norm_(params, max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
+            # Guard: NaN/inf loss means a bad batch — skip rather than propagate
+            if torch.isnan(loss) or torch.isinf(loss):
+                print(f"[warn] Loss={loss.item()} at epoch {epoch} batch {batch_idx} — skipping update")
+                optimizer.zero_grad(set_to_none=True)
+                continue
+
             total_loss += loss.item()
 
             if (batch_idx + 1) % _CKPT_EVERY == 0:

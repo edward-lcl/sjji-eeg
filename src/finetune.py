@@ -10,7 +10,7 @@ import numpy as np
 from pathlib import Path
 from torch.utils.data import Dataset, DataLoader, Subset
 from sklearn.model_selection import LeaveOneGroupOut
-from sklearn.metrics import balanced_accuracy_score, recall_score, precision_score
+from sklearn.metrics import balanced_accuracy_score, recall_score, precision_score, roc_auc_score, average_precision_score
 from src.model import EEGClassifier
 
 
@@ -76,13 +76,21 @@ def eval_epoch(model, loader, device):
     return np.array(all_preds), np.array(all_labels)
 
 
-def compute_metrics(preds, labels):
-    return {
+def compute_metrics(preds, labels, scores=None):
+    """Core metrics. If scores (e.g. logits) are provided, also computes roc_auc and avg_precision (per ISSUES.md)."""
+    m = {
         "balanced_accuracy": balanced_accuracy_score(labels, preds),
         "sensitivity": recall_score(labels, preds, pos_label=1, zero_division=0),
         "specificity": recall_score(labels, preds, pos_label=0, zero_division=0),
         "precision": precision_score(labels, preds, pos_label=1, zero_division=0),
     }
+    if scores is not None:
+        try:
+            m["roc_auc"] = roc_auc_score(labels, scores)
+            m["avg_precision"] = average_precision_score(labels, scores)
+        except Exception:
+            pass  # e.g. degenerate fold
+    return m
 
 
 def run_lnso_cv(
@@ -122,7 +130,11 @@ def run_lnso_cv(
         # Re-init classifier head each fold, keep pretrained encoder
         model = EEGClassifier(classifier.encoder, nb_classes=2).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=float(lr))
-        criterion = nn.BCEWithLogitsLoss()
+        train_labels = [dataset.samples[i][1] for i in train_idx]
+        n_pd = sum(1 for l in train_labels if l == 1)
+        n_hc = sum(1 for l in train_labels if l == 0)
+        pos_weight = torch.tensor([n_hc / max(n_pd, 1)], device=device)
+        criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
         for epoch in range(epochs):
             train_epoch(model, train_loader, optimizer, criterion, device)
