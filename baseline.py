@@ -18,6 +18,7 @@ from sklearn.metrics import balanced_accuracy_score, recall_score
 from src.model import build_encoder, EEGClassifier
 from src.finetune import LabeledEEGDataset, train_epoch, eval_epoch, compute_metrics
 from src.evaluate import print_results, save_results, TRANSFORM_EEG_BASELINE
+from src.pretrain import eeg_augment_batch
 
 DATASET_IDS = ["ds004148", "ds002778", "ds003490", "ds004584"]
 PD_DATASET_IDS = ["ds002778", "ds003490", "ds004584"]  # datasets with PD subjects
@@ -71,10 +72,20 @@ def train_eval(train_samples, test_samples, n_channels: int):
     encoder = build_encoder(Chan=n_channels)
     model = EEGClassifier(encoder, nb_classes=2).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=LR * 0.01)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     for _ in range(EPOCHS):
-        train_epoch(model, train_loader, optimizer, criterion, DEVICE)
+        model.train()
+        for x, y in train_loader:
+            x = eeg_augment_batch(x.to(DEVICE))
+            y_f = y.float().to(DEVICE)
+            optimizer.zero_grad()
+            logits = model(x).squeeze(-1)
+            loss = criterion(logits, y_f)
+            loss.backward()
+            optimizer.step()
+        scheduler.step()
 
     preds, labels = eval_epoch(model, test_loader, DEVICE)
     return compute_metrics(preds, labels)
@@ -123,6 +134,18 @@ def mode_per_dataset(datasets):
 
             test_samples = [s for s in ds.samples if s[2] in test_subjects]
             train_samples = [s for s in ds.samples if s[2] not in test_subjects]
+
+            # Add ds004148 HC samples to training, matching channel count.
+            # The paper trains each PD dataset paired with ds004148 HC-only data.
+            # ds004148 has no test subjects — all its samples go into training.
+            if "ds004148" in datasets and ds_id != "ds004148":
+                ds4148 = datasets["ds004148"]
+                ds4148_n_ch = get_n_channels(ds4148)
+                if ds4148_n_ch == n_channels:
+                    train_samples = train_samples + ds4148.samples
+                else:
+                    # Channel mismatch (native mode) — skip ds004148 augmentation
+                    pass
 
             test_labels = [s[1] for s in test_samples]
             if len(set(test_labels)) < 2:

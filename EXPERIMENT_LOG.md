@@ -367,3 +367,102 @@ This means the sub400k chapter didn't get a clean 100-epoch completion + probes 
 
 Packed data is confirmed ready (7.5 TiB). pretrain_full preset is wired for it + INIT from e70.
 
+---
+
+## Session 6 — 2026-06-09/10 (protocol discovery + correct baseline)
+
+### SSL e100 probe results (old 64-ch per-dataset protocol — for reference only)
+
+Job completed locally. Config: 64-ch unified, per-dataset N-LNSO probes, e100 sub400k encoder.
+
+| Dataset | bal_acc |
+|---------|---------|
+| ds002778 | 0.556 |
+| ds003490 | 0.578 |
+| ds004584 | 0.575 |
+| **Per-dataset mean** | **0.570** |
+| Cross-dataset agg | 0.484 |
+
+SSL lifted per-dataset by +3.7pp vs old 64-ch supervised baseline (0.533). Cross-dataset slightly below supervised (0.484 vs 0.503). **These numbers are now deprecated** — they were measured against the wrong protocol.
+
+---
+
+### Major discovery: protocol was completely wrong
+
+**Root cause of the 53% ceiling:** Multiple simultaneous mismatches vs the TransformEEG paper.
+
+| Component | What we had | Paper protocol |
+|-----------|-------------|----------------|
+| Channels | 64-ch unified (24 dead zeros for ds002778) | 29 channels common to all 4 datasets |
+| Training scope | Per-dataset (each PD dataset ± ds004148 HC) | All 4 datasets combined (270 subjects pooled) |
+| Learning rate | 1e-3 | 2.5e-4 |
+| Adam β₁ | 0.9 (default) | 0.75 |
+| LR schedule | None | ExponentialLR γ=0.99 |
+| Dataset split | No proper combined subject-level N-LNSO | Stratified N-LNSO across all 270 subjects |
+
+The 64-ch zero-padding was a design error: ds002778 has 40 native channels, and the unified format zero-pads the missing 24 channels in every segment. The TransformEEG paper instead extracts the 29 channels present in all 4 datasets (ds002778's 32 EEG channels mapped to positions in the unified layout). We implemented this as channel index selection from the existing 64-ch arrays — no re-processing needed.
+
+---
+
+### Correct combined baseline: `experiments/baseline_combined.py`
+
+Implemented from scratch matching the paper exactly. Runs combined N-LNSO on 270 subjects (140 PD, 130 HC) across all 4 datasets.
+
+**Result: 10-fold combined N-LNSO**
+
+| Fold | bal_acc | sens | spec |
+|------|---------|------|------|
+| 1 | 0.762 | 0.562 | 0.962 |
+| 2 | 0.878 | 0.823 | 0.933 |
+| 3 | 0.955 | 0.966 | 0.945 |
+| 4 | 0.929 | 0.928 | 0.931 |
+| 5 | 0.951 | 0.998 | 0.905 |
+| 6 | 0.919 | 0.912 | 0.925 |
+| 7 | 0.904 | 0.933 | 0.875 |
+| 8 | 0.840 | 0.970 | 0.710 |
+| 9 | 0.838 | 0.833 | 0.842 |
+| 10 | 0.843 | 0.931 | 0.755 |
+| **Mean** | **0.882** | **0.886** | **0.878** |
+| **Median** | **0.891** | | |
+
+**Paper target: 0.7845 (median). Our result: 0.891 median (+10.6pp)**
+
+Result file: `results/baseline/combined_nlnso_20260610_040552.json`
+
+---
+
+### Research reorientation: paper has NO SSL
+
+The TransformEEG paper (arxiv 2507.07622) does not use self-supervised pretraining at any stage. Their 78.45% balanced accuracy is a purely supervised ceiling. Our TUH-scale VICReg pretraining is genuinely a novel contribution on top of their architecture — not a reproduction.
+
+**New framing:** Can SSL pretraining on TUH + fine-tuning on the 29-ch combined protocol exceed the 89.1% supervised median? That is now the core research question.
+
+---
+
+### Data syncs completed this session
+
+- `ds004584` HC subjects: downloaded from S3 (1.3 GB), reprocessed natively
+- `ds003490`: complete raw data re-synced from S3 (4.4 GB), reprocessed natively (was only 18/100 recordings)
+- Both now fully processed in `data/processed/`
+
+---
+
+### Next experiments queued
+
+1. **Re-run SSL probes with correct protocol** (local, free, ~2h): Update `ssl_pilot.py` Phase 2/3 to use 29-ch combined N-LNSO. Probe the existing e100 sub400k encoder. This gives the first valid SSL vs supervised delta under the correct protocol.
+
+2. **Full-scale TUH pretrain on new AWS account**: Requires channel mapping — TUH native channels → 29-ch common subset. Pack job + pretrain_full preset. Expected: encoder trained on 63k+ TUH segments, then probed with combined N-LNSO.
+
+3. **New AWS account setup**: Cross-account S3 access via bucket policy on old account + IAM policy on new SageMaker role. No data migration required.
+
+### Session 6 compute
+
+| Experiment | Device | Duration | Status |
+|---|---|---|---|
+| ssl_pilot e100 probes (old protocol) | MPS | ~2h | ✅ Done |
+| baseline.py cross-dataset (64-ch) | MPS | ~1h | ❌ Crashed (OOM) |
+| experiments/baseline_combined.py | MPS | ~2h 30m | ✅ Done — 0.882 mean |
+| ds004584 + ds003490 raw S3 sync | — | ~30m | ✅ Done |
+
+### Session 6 total: ~7h compute
+
