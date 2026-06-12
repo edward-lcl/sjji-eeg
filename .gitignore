@@ -13,3 +13,5 @@ __pycache__/
 *.ckpt
 *.npy
 wandb/
+.env
+outputs/
