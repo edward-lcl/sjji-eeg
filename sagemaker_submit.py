@@ -209,6 +209,11 @@ def main():
         "SM_ROLE_ARN",
         "arn:aws:iam::506145782110:role/service-role/AmazonSageMaker-ExecutionRole-20260509T231091",
     )
+    # Data inputs are read from DATA_BUCKET; outputs/checkpoints go to S3_BUCKET.
+    # With the cross-account setup the data still lives in the old account's
+    # bucket (read-only) while the new account owns the output bucket. When both
+    # are the same account, leave DATA_BUCKET unset and it falls back to bucket.
+    data_bucket = os.environ.get("DATA_BUCKET", bucket)
 
     job_name = args.job_name or f"sjji-eeg-{args.job.replace('_', '-')}-{int(time.time())}"
 
@@ -229,9 +234,11 @@ def main():
     print(f"  Instance: {instance}{' (spot)' if use_spot else ' (on-demand)'}")
     print(f"  Max run:  {max_hours}h")
     print(f"  Source:   {staging_dir}")
-    print(f"  Region:   {region}  Bucket: {bucket}")
+    print(f"  Region:   {region}  Out bucket: {bucket}")
+    if data_bucket != bucket:
+        print(f"  Data:     {data_bucket} (cross-account read)")
 
-    data_inputs = build_data_inputs(data_channels, bucket, job_preset=args.job)
+    data_inputs = build_data_inputs(data_channels, data_bucket, job_preset=args.job)
 
     if args.dry_run:
         print("\n[dry-run] Not submitting.")
@@ -262,7 +269,8 @@ def main():
         source_dir=staging_dir,
         environment={
             "SM_JOB_NAME":   job_name,
-            "S3_BUCKET":     bucket,
+            "S3_BUCKET":     bucket,        # output/write bucket (new account)
+            "DATA_BUCKET":   data_bucket,   # read bucket (old account, cross-account)
             "DATA_CHANNELS": ",".join(data_channels),
             # S3 coords for preprocess job (boto3 direct, no channel mount)
             "S3_RAW_PREFIX": "data/raw/tuh_eeg/v2.0.1/edf",
