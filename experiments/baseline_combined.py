@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.model import build_encoder, EEGClassifier
+from src.preprocess import common_ch_indices
 from src.finetune import LabeledEEGDataset, eval_epoch, compute_metrics
 from src.honest_eval import (
     site_prior_null, subject_level_metrics, segment_level_metrics,
@@ -32,12 +33,11 @@ from src.honest_eval import (
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-# Indices of the 29 common channels within the 64-ch unified arrays.
-# These are channels genuinely present in all 4 datasets (no zero-padding).
-# ds002778 (40-ch BDF) is the bottleneck — it has 32 EEG channels, 29 of which
-# map to positions in the unified 64-ch layout.
-COMMON_CH_INDICES = [0,1,3,4,6,8,10,12,14,17,19,21,23,26,28,30,32,34,37,39,41,43,46,48,52,54,60,61,62]
-N_CHANNELS = len(COMMON_CH_INDICES)  # 29
+# Common channels within the 64-ch unified arrays. Set via SJJI_CH_SET env:
+#   29 (default) = intersection of the 4 OpenNeuro datasets
+#   19           = intersection of TUH + OpenNeuro (use to match TUH transfer runs)
+COMMON_CH_INDICES = common_ch_indices()
+N_CHANNELS = len(COMMON_CH_INDICES)
 
 DATASET_IDS  = ["ds004148", "ds002778", "ds003490", "ds004584"]
 PD_DS_IDS    = ["ds002778", "ds003490", "ds004584"]

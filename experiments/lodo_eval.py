@@ -38,6 +38,7 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.model import build_encoder, EEGClassifier
+from src.preprocess import common_ch_indices
 from src.finetune import LabeledEEGDataset
 from src.honest_eval import (
     site_prior_null, subject_level_metrics, segment_level_metrics,
@@ -46,8 +47,9 @@ from src.honest_eval import (
 
 # ── Config (matches baseline_combined.py / paper supervised) ───────────────────
 
-COMMON_CH_INDICES = [0,1,3,4,6,8,10,12,14,17,19,21,23,26,28,30,32,34,37,39,41,43,46,48,52,54,60,61,62]
-N_CHANNELS = len(COMMON_CH_INDICES)  # 29
+# Common channels (SJJI_CH_SET env: 29 default = OpenNeuro-only, 19 = TUH∩OpenNeuro)
+COMMON_CH_INDICES = common_ch_indices()
+N_CHANNELS = len(COMMON_CH_INDICES)
 
 DATASET_IDS = ["ds004148", "ds002778", "ds003490", "ds004584"]
 HELDOUT_IDS = ["ds002778", "ds003490", "ds004584"]   # both-class datasets only
@@ -256,6 +258,6 @@ def run(mode, encoder_path=None):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["supervised", "probe"], default="supervised")
-    ap.add_argument("--encoder", default="results/ssl/pretrained_encoder_29ch_opennero.pt")
+    ap.add_argument("--encoder", default=f"results/ssl/pretrained_encoder_{N_CHANNELS}ch_opennero.pt")
     args = ap.parse_args()
     run(args.mode, encoder_path=args.encoder if args.mode == "probe" else None)

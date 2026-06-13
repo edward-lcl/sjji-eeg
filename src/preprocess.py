@@ -71,6 +71,28 @@ UNIFIED_64_CHANNELS = [
 ]
 
 
+# ── Common-channel index sets (into UNIFIED_64_CHANNELS) ──────────────────────
+# 29: intersection of the 4 OpenNeuro datasets. Legacy set — 14 of these are dead
+#     (zero-padded) in TUH, so it is NOT suitable for TUH transfer experiments.
+# 19: intersection of TUH + the 4 OpenNeuro datasets. Verified 19/19 alive in TUH
+#     after the T3/T4/T5/T6 -> T7/T8/P7/P8 remap. Use this for any TUH↔OpenNeuro
+#     transfer (pretrain and eval must share the channel set).
+COMMON29_CH_INDICES = [0,1,3,4,6,8,10,12,14,17,19,21,23,26,28,30,32,34,37,39,41,43,46,48,52,54,60,61,62]
+COMMON19_CH_INDICES = [0,1,6,8,10,12,14,26,28,30,32,34,46,48,52,54,60,61,62]
+
+
+def common_ch_indices(ch_set=None):
+    """Common-channel index list for ch_set in {19, 29}. ch_set defaults to env
+    SJJI_CH_SET (default 29 for backward compatibility). Use 19 for TUH transfer."""
+    import os
+    if ch_set is None:
+        ch_set = int(os.environ.get("SJJI_CH_SET", "29"))
+    try:
+        return {19: COMMON19_CH_INDICES, 29: COMMON29_CH_INDICES}[ch_set]
+    except KeyError:
+        raise ValueError(f"SJJI_CH_SET must be 19 or 29, got {ch_set}")
+
+
 # Old (clinical 10-20) -> modern (10-10) electrode names. TUH labels its temporal
 # and posterior-temporal electrodes T3/T4/T5/T6; the unified 64-ch layout uses
 # T7/T8/P7/P8. Without this remap those electrodes get zero-padded even though the

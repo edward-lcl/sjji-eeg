@@ -29,6 +29,7 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.model import build_encoder, EEGClassifier
+from src.preprocess import common_ch_indices
 from src.pretrain import eeg_augment_batch, vicreg_loss
 from src.finetune import LabeledEEGDataset, eval_epoch, compute_metrics
 from src.honest_eval import (
@@ -38,8 +39,9 @@ from src.honest_eval import (
 
 # ── Config ───────────────────────────────────────────────────────────────────
 
-COMMON_CH_INDICES = [0,1,3,4,6,8,10,12,14,17,19,21,23,26,28,30,32,34,37,39,41,43,46,48,52,54,60,61,62]
-N_CHANNELS = len(COMMON_CH_INDICES)  # 29
+# Common channels (SJJI_CH_SET env: 29 default = OpenNeuro-only, 19 = TUH∩OpenNeuro)
+COMMON_CH_INDICES = common_ch_indices()
+N_CHANNELS = len(COMMON_CH_INDICES)
 
 DATASET_IDS = ["ds004148", "ds002778", "ds003490", "ds004584"]
 PD_DS_IDS   = ["ds002778", "ds003490", "ds004584"]
@@ -57,7 +59,7 @@ PROBE_BATCH  = 32
 N_FOLDS = 10
 DEVICE  = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 
-ENCODER_SAVE = "results/ssl/pretrained_encoder_29ch_opennero.pt"
+ENCODER_SAVE = f"results/ssl/pretrained_encoder_{N_CHANNELS}ch_opennero.pt"
 
 
 # ── Datasets ─────────────────────────────────────────────────────────────────
