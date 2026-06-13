@@ -50,9 +50,14 @@ OpenNeuro signal → train/eval mismatch on half the inputs → transfer fails f
 unrelated to SSL. This would manufacture a false-negative result and waste GPU credits.
 
 **Design change — use a 19-channel TUH∩OpenNeuro montage** (the 15 alive + the 4 renamed):
-`Fp1 Fp2 F7 F3 Fz F4 F8 T7 C3 Cz C4 T8 P7 P3 P4 P8 O1 Oz O2`. Define a new
-`COMMON19_*` index set, rebuild `build_encoder(Chan=19)`, and use it for BOTH pretrain and
-eval so the channels are consistent. NOTE: the existing OpenNeuro-only baselines
+`Fp1 Fp2 F7 F3 Fz F4 F8 T7 C3 Cz C4 T8 P7 P3 P4 P8 O1 Oz O2`. Indices into the unified
+64-ch layout (verified 19/19 alive on TUH after the naming fix landed in `_normalize_ch`):
+
+```python
+COMMON19_CH_INDICES = [0, 1, 6, 8, 10, 12, 14, 26, 28, 30, 32, 34, 46, 48, 52, 54, 60, 61, 62]
+```
+
+Rebuild `build_encoder(Chan=19)` and use it for BOTH pretrain and eval so channels match. NOTE: the existing OpenNeuro-only baselines
 (`baseline_combined.py`, `ssl_29ch_local.py`, `lodo_eval.py`) use the 29-ch set — re-run
 them at 19ch so the supervised/SSL baselines are at the same channel count the TUH
 experiment will use. (Also worth caveating: TUH `processed_unified/tuh_eeg/` on local disk

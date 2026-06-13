@@ -71,15 +71,23 @@ UNIFIED_64_CHANNELS = [
 ]
 
 
+# Old (clinical 10-20) -> modern (10-10) electrode names. TUH labels its temporal
+# and posterior-temporal electrodes T3/T4/T5/T6; the unified 64-ch layout uses
+# T7/T8/P7/P8. Without this remap those electrodes get zero-padded even though the
+# signal is present (measured: recovers 4 of 29 common channels on TUH).
+_CH_ALIAS = {"T3": "T7", "T4": "T8", "T5": "P7", "T6": "P8"}
+
+
 def _normalize_ch(name: str) -> str:
-    """Strip common EDF prefixes/suffixes so 'EEG FP1-LE' matches 'FP1'."""
+    """Strip common EDF prefixes/suffixes so 'EEG FP1-LE' matches 'FP1', and remap
+    old 10-20 names (T3/T4/T5/T6) to modern equivalents (T7/T8/P7/P8)."""
     n = name.upper()
     for prefix in ('EEG ', 'ECG ', 'EOG ', 'EMG '):
         if n.startswith(prefix):
             n = n[len(prefix):]
             break
     n = n.split('-')[0].split('_')[0].strip()
-    return n
+    return _CH_ALIAS.get(n, n)
 
 
 def interpolate_to_unified(raw, target_channels=None):
