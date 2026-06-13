@@ -121,7 +121,7 @@ class ChannelSelectLabeledDataset(Dataset):
 def pretrain_vicreg_opennero(encoder, data_dir, output_path):
     """VICReg pretrain on OpenNeuro 29-ch data."""
     print(f"\n{'='*60}")
-    print(f"Phase 1: VICReg pretrain — 29-ch OpenNeuro")
+    print(f"Phase 1: VICReg pretrain — {N_CHANNELS}-ch OpenNeuro")
     print(f"  Epochs: {PRETRAIN_EPOCHS}  Batch: {PRETRAIN_BATCH}  LR: {PRETRAIN_LR}")
     print(f"{'='*60}")
 
@@ -291,7 +291,7 @@ def linear_probe_fold(encoder, train_samples, test_samples):
 
 def run_combined_probe(encoder, data_dir):
     print(f"\n{'='*60}")
-    print(f"Phase 2: Combined N-LNSO linear probe — 29-ch SSL encoder")
+    print(f"Phase 2: Combined N-LNSO linear probe — {N_CHANNELS}-ch SSL encoder")
     print(f"  Probe epochs: {PROBE_EPOCHS}  Folds: {N_FOLDS}")
     print(f"{'='*60}\n")
 
@@ -348,7 +348,7 @@ def run_combined_probe(encoder, data_dir):
     seg_ci, sub_ci = bootstrap_ci(seg_ba), bootstrap_ci(sub_ba)
 
     print(f"\n{'='*60}")
-    print(f"  SSL 29-ch combined N-LNSO — {len(seg_ba)} folds (median + IQR)")
+    print(f"  SSL {N_CHANNELS}-ch combined N-LNSO — {len(seg_ba)} folds (median + IQR)")
     print(f"{'='*60}")
     print(f"  SEGMENT-level: median={seg_summary['median']:.3f}  IQR={seg_summary['iqr']:.3f}  "
           f"mean={seg_summary['mean']:.3f}  95%CI[{seg_ci['ci_low']:.3f},{seg_ci['ci_high']:.3f}]")
@@ -402,7 +402,7 @@ def run(probe_only=False):
     out_dir = Path("results/ssl")
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"ssl_29ch_opennero_{ts}.json"
+    out_path = out_dir / f"ssl_{N_CHANNELS}ch_opennero_{ts}.json"
     with open(out_path, "w") as f:
         json.dump(out, f, indent=2)
     print(f"\nResults saved to {out_path}")
