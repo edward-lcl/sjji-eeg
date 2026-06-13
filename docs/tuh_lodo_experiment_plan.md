@@ -32,11 +32,37 @@ site shortcut is the only thing on offer. TUH breaks both: it is a different cor
   flags the overlap as a confound. Verify with a manifest assertion in the pretrain
   job: no S3 key under the OpenNeuro prefixes enters the pretrain channel.
 
-## 3. Channel mapping — the #1 technical risk
+## 3. Channel mapping — the #1 risk, now MEASURED (2026-06-13)
 
-The encoder is `build_encoder(Chan=29)` (feat_dim=116). For TUH features to transfer to
-OpenNeuro, **the 29 channels must be the same scalp positions in the same order** in both
-corpora. Concretely:
+**Finding (measured on raw TUH EDFs through `process_eeg_file(unified=True)`):**
+of the 29 OpenNeuro-derived common channels, **only 15 survive in TUH; 14 are dead.**
+
+- TUH uses the classic clinical 10-20 montage: `FP1 FP2 F3 F4 C3 C4 P3 P4 O1 O2 F7 F8
+  T3 T4 T5 T6 FZ CZ PZ OZ`.
+- **4 dead are recoverable** — `T7/T8/P7/P8` are TUH's `T3/T4/T5/T6` under old 10-20
+  naming. Add aliases in `src/preprocess.py::_normalize_ch` (T3→T7, T4→T8, T5→P7, T6→P8).
+- **10 dead are genuinely absent** in TUH: `AF3 AF4 FC5 FC1 FC2 FC6 CP5 CP1 CP2 CP6`
+  (extended 10-10 positions TUH does not record). Do NOT interpolate — exclude them.
+
+**Why it matters:** the depthwise tokenizer has one filter per channel. Pretraining
+`Chan=29` on TUH trains 14 filters on pure zeros; at LODO eval those channels carry real
+OpenNeuro signal → train/eval mismatch on half the inputs → transfer fails for reasons
+unrelated to SSL. This would manufacture a false-negative result and waste GPU credits.
+
+**Design change — use a 19-channel TUH∩OpenNeuro montage** (the 15 alive + the 4 renamed):
+`Fp1 Fp2 F7 F3 Fz F4 F8 T7 C3 Cz C4 T8 P7 P3 P4 P8 O1 Oz O2`. Define a new
+`COMMON19_*` index set, rebuild `build_encoder(Chan=19)`, and use it for BOTH pretrain and
+eval so the channels are consistent. NOTE: the existing OpenNeuro-only baselines
+(`baseline_combined.py`, `ssl_29ch_local.py`, `lodo_eval.py`) use the 29-ch set — re-run
+them at 19ch so the supervised/SSL baselines are at the same channel count the TUH
+experiment will use. (Also worth caveating: TUH `processed_unified/tuh_eeg/` on local disk
+is NOT actually 64-ch unified — it's native montage. The unified re-ingest is genuinely
+unstarted.)
+
+---
+
+Original requirement (still holds, now at 19ch): for TUH features to transfer,
+**the channels must be the same scalp positions in the same order** in both corpora:
 
 1. Re-ingest TUH with `unified=True` (`scripts/tuh_ingest_pipeline.py`) → the standard
    64-ch 10-20 layout (`src/preprocess.py::UNIFIED_64_CHANNELS`), identical layout the
@@ -102,8 +128,10 @@ reports per-held-out + macro.
 
 ## 8. Pitfalls checklist (verify before spending GPU credits)
 
-- [ ] Channel-order identity TUH↔OpenNeuro asserted (Section 3).
-- [ ] 29 common channels non-zero in TUH recordings (no dead-channel pretraining).
+- [x] Channel coverage measured (Section 3): only 15/29 alive in TUH → switch to 19ch.
+- [ ] Old/new naming aliases added (T3→T7, T4→T8, T5→P7, T6→P8) — recovers 4 channels.
+- [ ] `COMMON19` index set defined; OpenNeuro baselines re-run at 19ch.
+- [ ] 19 common channels non-zero in TUH recordings (re-verify after unified re-ingest).
 - [ ] Zero OpenNeuro keys in the pretrain manifest (disjointness asserted).
 - [ ] Packed shards built (no un-packed FastFile run).
 - [ ] Sample rate / window length consistent between pretrain and probe (currently 250Hz /
