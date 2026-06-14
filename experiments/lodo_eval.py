@@ -42,7 +42,7 @@ from src.preprocess import common_ch_indices
 from src.finetune import LabeledEEGDataset
 from src.honest_eval import (
     site_prior_null, subject_level_metrics, segment_level_metrics,
-    fold_summary,
+    fold_summary, subject_scores, calibration_report,
 )
 
 # ── Config (matches baseline_combined.py / paper supervised) ───────────────────
@@ -114,16 +114,30 @@ def _extract_features(encoder, samples):
     return np.concatenate(feats, 0), np.array(labels)
 
 
-def _fold_report(name, scores, samples):
+def _fold_report(name, scores, samples, train_scores=None, train_samples=None):
     labels = np.array([s[1] for s in samples])
     subs = np.array([s[2] for s in samples])
     seg = segment_level_metrics(scores, labels)
     sub = subject_level_metrics(scores, labels, subs)
-    print(f"    [{name}] segment bal_acc={seg['balanced_accuracy']:.3f} | "
-          f"subject bal_acc={sub['balanced_accuracy']:.3f} "
-          f"(sens={sub['sensitivity']:.3f} spec={sub['specificity']:.3f}, "
-          f"n_subj={sub['n_subjects']})")
-    return {"segment": seg, "subject": sub}
+
+    cal = None
+    if train_scores is not None and train_samples is not None:
+        te_s, te_l = subject_scores(scores, labels, subs)
+        tr_labels = np.array([s[1] for s in train_samples])
+        tr_subs = np.array([s[2] for s in train_samples])
+        tr_s, tr_l = subject_scores(train_scores, tr_labels, tr_subs)
+        cal = calibration_report(te_s, te_l, tr_s, tr_l)
+
+    line = (f"    [{name}] segment={seg['balanced_accuracy']:.3f} | "
+            f"subject(0.5)={sub['balanced_accuracy']:.3f} "
+            f"(sens={sub['sensitivity']:.3f} spec={sub['specificity']:.3f})")
+    if cal:
+        line += (f" | AUC={cal.get('roc_auc') or float('nan'):.3f}"
+                 f"  ba@[train={cal.get('train_transferred', float('nan')):.3f}"
+                 f" prev={cal.get('prevalence_matched', float('nan')):.3f}"
+                 f" oracle={cal.get('oracle_youden', float('nan')):.3f}]")
+    print(line)
+    return {"segment": seg, "subject": sub, "calibration": cal}
 
 
 # ── Supervised LODO ───────────────────────────────────────────────────────────
@@ -213,15 +227,17 @@ def run(mode, encoder_path=None):
         if mode == "supervised":
             model = train_supervised(train_samples)
             scores = _score_supervised(model, test_samples)
+            train_scores = _score_supervised(model, train_samples)
         else:
             encoder = build_encoder(Chan=N_CHANNELS)
             encoder.load_state_dict(torch.load(encoder_path, map_location="cpu"))
             encoder = encoder.to(DEVICE)
             head = train_probe(encoder, train_samples)
             scores = _score_probe(encoder, head, test_samples)
+            train_scores = _score_probe(encoder, head, train_samples)
 
-        folds[held] = _fold_report(held, scores, test_samples)
-        del scores
+        folds[held] = _fold_report(held, scores, test_samples, train_scores, train_samples)
+        del scores, train_scores
 
     # Macro averages across held-out datasets.
     seg_ba = [folds[d]["segment"]["balanced_accuracy"] for d in folds]
@@ -232,6 +248,20 @@ def run(mode, encoder_path=None):
     print(f"    subject bal_acc: mean={np.mean(sub_ba):.3f}  median={np.median(sub_ba):.3f}")
     print(f"    chance = 0.500   |   site-prior null (combined) = "
           f"{null['subject_balanced_accuracy']:.3f} subj / {null['segment_balanced_accuracy']:.3f} seg")
+
+    cal_macro = {}
+    for k in ["fixed_0.5", "train_transferred", "prevalence_matched", "oracle_youden", "roc_auc"]:
+        vals = [folds[d]["calibration"].get(k) for d in folds if folds[d].get("calibration")]
+        vals = [v for v in vals if v is not None]
+        if vals:
+            cal_macro[k] = float(np.mean(vals))
+    if cal_macro:
+        print(f"\n    CALIBRATION (subject bal_acc, macro across held-out sites):")
+        print(f"      fixed 0.5         = {cal_macro.get('fixed_0.5', float('nan')):.3f}  (the collapse)")
+        print(f"      train-transferred = {cal_macro.get('train_transferred', float('nan')):.3f}  (honest, deployable)")
+        print(f"      prevalence-matched= {cal_macro.get('prevalence_matched', float('nan')):.3f}  (realistic clinical)")
+        print(f"      oracle (ceiling)  = {cal_macro.get('oracle_youden', float('nan')):.3f}  (= what the AUC implies)")
+        print(f"      mean ROC-AUC      = {cal_macro.get('roc_auc', float('nan')):.3f}  (threshold-independent)")
     print(f"{'='*64}\n")
 
     out = {
@@ -242,6 +272,7 @@ def run(mode, encoder_path=None):
         "macro": {
             "segment": fold_summary(seg_ba),
             "subject": fold_summary(sub_ba),
+            "calibration": cal_macro,
         },
         "config": {"n_channels": N_CHANNELS, "heldout_ids": HELDOUT_IDS,
                    "sup_epochs": SUP_EPOCHS, "probe_epochs": PROBE_EPOCHS, "data_dir": DATA_DIR},
