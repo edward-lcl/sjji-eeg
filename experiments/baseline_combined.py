@@ -24,16 +24,20 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.model import build_encoder, EEGClassifier
+from src.preprocess import common_ch_indices
 from src.finetune import LabeledEEGDataset, eval_epoch, compute_metrics
+from src.honest_eval import (
+    site_prior_null, subject_level_metrics, segment_level_metrics,
+    fold_summary, bootstrap_ci,
+)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-# Indices of the 29 common channels within the 64-ch unified arrays.
-# These are channels genuinely present in all 4 datasets (no zero-padding).
-# ds002778 (40-ch BDF) is the bottleneck — it has 32 EEG channels, 29 of which
-# map to positions in the unified 64-ch layout.
-COMMON_CH_INDICES = [0,1,3,4,6,8,10,12,14,17,19,21,23,26,28,30,32,34,37,39,41,43,46,48,52,54,60,61,62]
-N_CHANNELS = len(COMMON_CH_INDICES)  # 29
+# Common channels within the 64-ch unified arrays. Set via SJJI_CH_SET env:
+#   29 (default) = intersection of the 4 OpenNeuro datasets
+#   19           = intersection of TUH + OpenNeuro (use to match TUH transfer runs)
+COMMON_CH_INDICES = common_ch_indices()
+N_CHANNELS = len(COMMON_CH_INDICES)
 
 DATASET_IDS  = ["ds004148", "ds002778", "ds003490", "ds004584"]
 PD_DS_IDS    = ["ds002778", "ds003490", "ds004584"]
@@ -127,8 +131,18 @@ def train_one_fold(train_samples, test_samples):
             optimizer.step()
         scheduler.step()
 
-    preds, labels = eval_epoch(model, test_loader, DEVICE)
-    return compute_metrics(preds, labels)
+    # Capture per-segment probabilities (not just thresholded preds) so the caller
+    # can aggregate to subject level. test_loader is unshuffled, so scores align
+    # with test_samples order.
+    model.eval()
+    scores = []
+    with torch.no_grad():
+        for x, _ in test_loader:
+            logits = model(x.float().to(DEVICE)).squeeze(-1)
+            scores.extend(torch.sigmoid(logits).cpu().numpy().tolist())
+    labels   = np.array([s[1] for s in test_samples])
+    subjects = np.array([s[2] for s in test_samples])
+    return np.array(scores), labels, subjects
 
 
 def run():
@@ -157,7 +171,16 @@ def run():
     print(f"Folds: {N_FOLDS} (stratified by PD/HC subject)")
     print()
 
-    fold_metrics = []
+    # Site-prior null: the real null model for this site-confounded pool (NOT 0.50).
+    # If a model's reported balanced accuracy does not clear this, the score cannot
+    # be attributed to pathology detection — only to recognizing the dataset.
+    null = site_prior_null(all_samples)
+    print(f"  SITE-PRIOR NULL (zero EEG info): "
+          f"segment={null['segment_balanced_accuracy']:.3f}  "
+          f"subject={null['subject_balanced_accuracy']:.3f}")
+    print(f"  per-dataset majority: {null['per_dataset_majority']}\n")
+
+    seg_folds, sub_folds = [], []
     for fold in range(N_FOLDS):
         pd_test = pd_subjects[fold::N_FOLDS]
         hc_test = hc_subjects[fold::N_FOLDS]
@@ -166,36 +189,48 @@ def run():
         test_samples  = [s for s in all_samples if s[2] in test_subj_set]
         train_samples = [s for s in all_samples if s[2] not in test_subj_set]
 
-        test_labels_set = set(s[1] for s in test_samples)
-        if len(test_labels_set) < 2:
+        if len(set(s[1] for s in test_samples)) < 2:
             print(f"  Fold {fold+1}: skipped (single class in test)")
             continue
 
         n_tr_pd = sum(s[1]==1 for s in train_samples)
-        n_tr_hc = sum(s[1]==0 for s in train_samples)
         n_te_pd = sum(s[1]==1 for s in test_samples)
-        n_te_hc = sum(s[1]==0 for s in test_samples)
-        print(f"  Fold {fold+1}: train={len(train_samples)} (PD={n_tr_pd} HC={n_tr_hc})  "
-              f"test={len(test_samples)} (PD={n_te_pd} HC={n_te_hc})")
+        print(f"  Fold {fold+1}: train={len(train_samples)} (PD={n_tr_pd} HC={len(train_samples)-n_tr_pd})  "
+              f"test={len(test_samples)} (PD={n_te_pd} HC={len(test_samples)-n_te_pd})")
 
-        metrics = train_one_fold(train_samples, test_samples)
-        fold_metrics.append(metrics)
-        print(f"           → bal_acc={metrics['balanced_accuracy']:.3f}  "
-              f"sens={metrics['sensitivity']:.3f}  spec={metrics['specificity']:.3f}")
+        scores, labels, subjects = train_one_fold(train_samples, test_samples)
+        seg = segment_level_metrics(scores, labels)
+        sub = subject_level_metrics(scores, labels, subjects)
+        seg_folds.append(seg)
+        sub_folds.append(sub)
+        print(f"           → segment bal_acc={seg['balanced_accuracy']:.3f}  |  "
+              f"subject bal_acc={sub['balanced_accuracy']:.3f} "
+              f"(sens={sub['sensitivity']:.3f} spec={sub['specificity']:.3f})")
 
-    print(f"\n{'='*50}")
-    print(f"  COMBINED N-LNSO — {N_FOLDS}-fold mean")
-    print(f"{'='*50}")
-    agg = {k: np.mean([m[k] for m in fold_metrics]) for k in fold_metrics[0]}
-    for k, v in agg.items():
-        print(f"  {k:30s}: {v:.4f}")
-    print(f"\n  Paper target (no augmentation): 0.7845")
-    delta = agg['balanced_accuracy'] - 0.7845
-    print(f"  Delta: {delta:+.4f}")
+    seg_ba = [m['balanced_accuracy'] for m in seg_folds]
+    sub_ba = [m['balanced_accuracy'] for m in sub_folds]
+    seg_summary, sub_summary = fold_summary(seg_ba), fold_summary(sub_ba)
+    seg_ci, sub_ci = bootstrap_ci(seg_ba), bootstrap_ci(sub_ba)
+
+    print(f"\n{'='*60}")
+    print(f"  COMBINED N-LNSO — {len(seg_ba)} folds (paper reports MEDIAN + IQR)")
+    print(f"{'='*60}")
+    print(f"  SEGMENT-level: median={seg_summary['median']:.3f}  IQR={seg_summary['iqr']:.3f}  "
+          f"mean={seg_summary['mean']:.3f}  95%CI[{seg_ci['ci_low']:.3f},{seg_ci['ci_high']:.3f}]")
+    print(f"  SUBJECT-level: median={sub_summary['median']:.3f}  IQR={sub_summary['iqr']:.3f}  "
+          f"mean={sub_summary['mean']:.3f}  95%CI[{sub_ci['ci_low']:.3f},{sub_ci['ci_high']:.3f}]")
+    print(f"\n  REFERENCE LINES:")
+    print(f"    chance                    = 0.500")
+    print(f"    site-prior null (subject) = {null['subject_balanced_accuracy']:.3f}")
+    print(f"    site-prior null (segment) = {null['segment_balanced_accuracy']:.3f}")
+    print(f"    paper median (no-aug)     = 0.7845  [32ch/125Hz/100-split — NOT directly comparable]")
+    print(f"\n  Honest headline = subject-level median {sub_summary['median']:.3f} "
+          f"vs site-prior null {null['subject_balanced_accuracy']:.3f}\n")
 
     out = {
-        "balanced_accuracy": agg,
-        "per_fold": fold_metrics,
+        "site_prior_null": null,
+        "segment": {"per_fold": seg_folds, "summary": seg_summary, "bootstrap_ci": seg_ci},
+        "subject": {"per_fold": sub_folds, "summary": sub_summary, "bootstrap_ci": sub_ci},
         "config": {
             "n_channels": N_CHANNELS,
             "ch_indices": COMMON_CH_INDICES,
@@ -203,7 +238,10 @@ def run():
             "lr": LR,
             "n_folds": N_FOLDS,
             "data_dir": DATA_DIR,
-        }
+        },
+        "notes": ("Combined N-LNSO is site-confounded: report subject-level median+IQR "
+                  "against site_prior_null, not the segment-level number. Paper's 0.7845 "
+                  "is 32ch/125Hz/session1-resting/100-split and not directly comparable."),
     }
     out_dir = Path("results/baseline")
     out_dir.mkdir(parents=True, exist_ok=True)

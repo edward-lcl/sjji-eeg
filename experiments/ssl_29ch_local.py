@@ -29,13 +29,19 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.model import build_encoder, EEGClassifier
+from src.preprocess import common_ch_indices
 from src.pretrain import eeg_augment_batch, vicreg_loss
 from src.finetune import LabeledEEGDataset, eval_epoch, compute_metrics
+from src.honest_eval import (
+    site_prior_null, subject_level_metrics, segment_level_metrics,
+    fold_summary, bootstrap_ci,
+)
 
 # ── Config ───────────────────────────────────────────────────────────────────
 
-COMMON_CH_INDICES = [0,1,3,4,6,8,10,12,14,17,19,21,23,26,28,30,32,34,37,39,41,43,46,48,52,54,60,61,62]
-N_CHANNELS = len(COMMON_CH_INDICES)  # 29
+# Common channels (SJJI_CH_SET env: 29 default = OpenNeuro-only, 19 = TUH∩OpenNeuro)
+COMMON_CH_INDICES = common_ch_indices()
+N_CHANNELS = len(COMMON_CH_INDICES)
 
 DATASET_IDS = ["ds004148", "ds002778", "ds003490", "ds004584"]
 PD_DS_IDS   = ["ds002778", "ds003490", "ds004584"]
@@ -53,7 +59,7 @@ PROBE_BATCH  = 32
 N_FOLDS = 10
 DEVICE  = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 
-ENCODER_SAVE = "results/ssl/pretrained_encoder_29ch_opennero.pt"
+ENCODER_SAVE = f"results/ssl/pretrained_encoder_{N_CHANNELS}ch_opennero.pt"
 
 
 # ── Datasets ─────────────────────────────────────────────────────────────────
@@ -115,7 +121,7 @@ class ChannelSelectLabeledDataset(Dataset):
 def pretrain_vicreg_opennero(encoder, data_dir, output_path):
     """VICReg pretrain on OpenNeuro 29-ch data."""
     print(f"\n{'='*60}")
-    print(f"Phase 1: VICReg pretrain — 29-ch OpenNeuro")
+    print(f"Phase 1: VICReg pretrain — {N_CHANNELS}-ch OpenNeuro")
     print(f"  Epochs: {PRETRAIN_EPOCHS}  Batch: {PRETRAIN_BATCH}  LR: {PRETRAIN_LR}")
     print(f"{'='*60}")
 
@@ -265,25 +271,27 @@ def linear_probe_fold(encoder, train_samples, test_samples):
             criterion(logits, y).backward()
             optimizer.step()
 
+    # Capture per-segment probabilities (test_loader is unshuffled, so scores
+    # align with test_samples order) to enable subject-level aggregation.
     head.eval()
-    all_preds, all_labels = [], []
+    scores = []
     with torch.no_grad():
-        for x, y in test_loader:
+        for x, _ in test_loader:
             x = x.float().to(DEVICE)
             feats = encoder(x)
-            preds = (torch.sigmoid(head(feats).squeeze(-1)) > 0.5).long().cpu().tolist()
-            all_preds.extend(preds)
-            all_labels.extend(y.tolist())
+            scores.extend(torch.sigmoid(head(feats).squeeze(-1)).cpu().numpy().tolist())
 
     for p in encoder.parameters():
         p.requires_grad = True
 
-    return compute_metrics(all_preds, all_labels)
+    labels   = np.array([s[1] for s in test_samples])
+    subjects = np.array([s[2] for s in test_samples])
+    return np.array(scores), labels, subjects
 
 
 def run_combined_probe(encoder, data_dir):
     print(f"\n{'='*60}")
-    print(f"Phase 2: Combined N-LNSO linear probe — 29-ch SSL encoder")
+    print(f"Phase 2: Combined N-LNSO linear probe — {N_CHANNELS}-ch SSL encoder")
     print(f"  Probe epochs: {PROBE_EPOCHS}  Folds: {N_FOLDS}")
     print(f"{'='*60}\n")
 
@@ -303,7 +311,13 @@ def run_combined_probe(encoder, data_dir):
 
     print(f"  Subjects: {len(unique_subjects)} total  PD={len(pd_subjects)}  HC={len(hc_subjects)}\n")
 
-    fold_metrics = []
+    null = site_prior_null(all_samples)
+    print(f"  SITE-PRIOR NULL (zero EEG info): "
+          f"segment={null['segment_balanced_accuracy']:.3f}  "
+          f"subject={null['subject_balanced_accuracy']:.3f}")
+    print(f"  per-dataset majority: {null['per_dataset_majority']}\n")
+
+    seg_folds, sub_folds = [], []
     for fold in range(N_FOLDS):
         pd_test  = pd_subjects[fold::N_FOLDS]
         hc_test  = hc_subjects[fold::N_FOLDS]
@@ -315,33 +329,43 @@ def run_combined_probe(encoder, data_dir):
         if len(set(s[1] for s in test_s)) < 2:
             continue
 
-        n_tr_pd = sum(s[1]==1 for s in train_s)
         n_te_pd = sum(s[1]==1 for s in test_s)
         n_te_hc = sum(s[1]==0 for s in test_s)
 
-        metrics = linear_probe_fold(encoder, train_s, test_s)
-        fold_metrics.append(metrics)
-        print(f"  Fold {fold+1:2d}: bal_acc={metrics['balanced_accuracy']:.3f}  "
-              f"sens={metrics['sensitivity']:.3f}  spec={metrics['specificity']:.3f}  "
-              f"(test: PD={n_te_pd} HC={n_te_hc})")
+        scores, labels, subjects = linear_probe_fold(encoder, train_s, test_s)
+        seg = segment_level_metrics(scores, labels)
+        sub = subject_level_metrics(scores, labels, subjects)
+        seg_folds.append(seg)
+        sub_folds.append(sub)
+        print(f"  Fold {fold+1:2d}: segment bal_acc={seg['balanced_accuracy']:.3f}  |  "
+              f"subject bal_acc={sub['balanced_accuracy']:.3f} "
+              f"(sens={sub['sensitivity']:.3f} spec={sub['specificity']:.3f}, "
+              f"test PD={n_te_pd} HC={n_te_hc})")
 
-    print(f"\n{'='*50}")
-    print(f"  SSL 29-ch combined N-LNSO — {N_FOLDS}-fold mean")
-    print(f"{'='*50}")
-    agg = {k: np.mean([m[k] for m in fold_metrics]) for k in fold_metrics[0]}
-    for k, v in agg.items():
-        print(f"  {k:30s}: {v:.4f}")
+    seg_ba = [m['balanced_accuracy'] for m in seg_folds]
+    sub_ba = [m['balanced_accuracy'] for m in sub_folds]
+    seg_summary, sub_summary = fold_summary(seg_ba), fold_summary(sub_ba)
+    seg_ci, sub_ci = bootstrap_ci(seg_ba), bootstrap_ci(sub_ba)
 
-    fold_vals = [m['balanced_accuracy'] for m in fold_metrics]
-    print(f"\n  Median:  {np.median(fold_vals):.4f}")
-    print(f"  Std:     {np.std(fold_vals):.4f}")
-    print(f"\n  Supervised baseline (29-ch): mean=0.882  median=0.891")
-    delta_mean   = agg['balanced_accuracy'] - 0.8819
-    delta_median = np.median(fold_vals) - 0.8910
-    print(f"  SSL delta (mean):   {delta_mean:+.4f}")
-    print(f"  SSL delta (median): {delta_median:+.4f}")
+    print(f"\n{'='*60}")
+    print(f"  SSL {N_CHANNELS}-ch combined N-LNSO — {len(seg_ba)} folds (median + IQR)")
+    print(f"{'='*60}")
+    print(f"  SEGMENT-level: median={seg_summary['median']:.3f}  IQR={seg_summary['iqr']:.3f}  "
+          f"mean={seg_summary['mean']:.3f}  95%CI[{seg_ci['ci_low']:.3f},{seg_ci['ci_high']:.3f}]")
+    print(f"  SUBJECT-level: median={sub_summary['median']:.3f}  IQR={sub_summary['iqr']:.3f}  "
+          f"mean={sub_summary['mean']:.3f}  95%CI[{sub_ci['ci_low']:.3f},{sub_ci['ci_high']:.3f}]")
+    print(f"\n  REFERENCE LINES:")
+    print(f"    chance                    = 0.500")
+    print(f"    site-prior null (subject) = {null['subject_balanced_accuracy']:.3f}")
+    print(f"    site-prior null (segment) = {null['segment_balanced_accuracy']:.3f}")
+    print(f"\n  WARNING: combined N-LNSO is site-confounded. The honest cross-site number "
+          f"is LODO (experiments/lodo_eval.py), not this.\n")
 
-    return agg, fold_metrics
+    return {
+        "site_prior_null": null,
+        "segment": {"per_fold": seg_folds, "summary": seg_summary, "bootstrap_ci": seg_ci},
+        "subject": {"per_fold": sub_folds, "summary": sub_summary, "bootstrap_ci": sub_ci},
+    }
 
 
 def run(probe_only=False):
@@ -359,12 +383,14 @@ def run(probe_only=False):
         encoder.load_state_dict(torch.load(ENCODER_SAVE, map_location="cpu"))
 
     encoder = encoder.to(DEVICE)
-    agg, fold_metrics = run_combined_probe(encoder, DATA_DIR)
+    result = run_combined_probe(encoder, DATA_DIR)
 
     out = {
-        "mean": agg,
-        "per_fold": fold_metrics,
-        "supervised_baseline": {"mean": 0.8819, "median": 0.8910},
+        **result,
+        "supervised_baseline_combined": {
+            "segment_median": 0.891,
+            "note": "site-confounded; compare against site_prior_null and LODO (lodo_eval.py), not this number",
+        },
         "config": {
             "n_channels": N_CHANNELS,
             "ch_indices": COMMON_CH_INDICES,
@@ -376,7 +402,7 @@ def run(probe_only=False):
     out_dir = Path("results/ssl")
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"ssl_29ch_opennero_{ts}.json"
+    out_path = out_dir / f"ssl_{N_CHANNELS}ch_opennero_{ts}.json"
     with open(out_path, "w") as f:
         json.dump(out, f, indent=2)
     print(f"\nResults saved to {out_path}")
