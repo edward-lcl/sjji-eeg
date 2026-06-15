@@ -1,192 +1,125 @@
 # Paper Outline
-## Self-Supervised EEG Pretraining for Cross-Dataset Parkinson's Disease Detection
+## Site Confounds, Calibration, and the Limits of Self-Supervision in Cross-Dataset Parkinson's EEG Detection
 
-**Target venue:** IEEE EMBC 2025 / IEEE JBHI / Neurocomputing  
-**Status:** In progress — experiments running
+**Target venue:** IEEE EMBC / IEEE JBHI / Neurocomputing
+**Status:** Results largely in; data-efficiency sweep + writeup in progress.
+
+> **NOTE — thesis changed.** The original framing ("SSL improves cross-dataset PD
+> detection") was *not* supported by our experiments. This outline reflects what the
+> data actually shows. Do not write toward the old thesis.
+
+---
+
+## Ownership (who drafts what — so we split the load)
+
+| Section | Primary owner | Students can do |
+|---|---|---|
+| 1 Introduction | Mentor + Claude (claims) | draft the clinical-problem paragraph (¶1) |
+| 2 Related Work | **Students** | the whole section (see `docs/related_works.md`) |
+| 3 Datasets & Preprocessing | **Students** (draft) + Claude (montage finding) | dataset table, preprocessing prose |
+| 4 Methods (protocols / null / calibration) | Mentor + Claude | — |
+| 5 Results | Mentor + Claude (numbers) | **make the figures** from result JSONs |
+| 6 Discussion / 7 Conclusion | Mentor + Claude | — |
+| Figures + dataset table | — | **Students** (matplotlib from `results/`) |
 
 ---
 
 ## Title (working)
+> **"Site Confounds, Not Signal: Re-evaluating Cross-Dataset Parkinson's Disease Detection from EEG"**
 
-> **"Towards Generalizable Parkinson's Disease Detection from EEG: A Self-Supervised Pretraining Approach"**
-
-Alternative:
-> **"Self-Supervised EEG Representation Learning for Cross-Dataset Parkinson's Disease Detection"**
+Alt: *"What Actually Transfers Across Sites in EEG-Based Parkinson's Detection? Confounds, Calibration, and the Limits of Self-Supervised Pretraining"*
 
 ---
 
-## Core Narrative (one paragraph)
+## Core narrative (one paragraph)
 
-Parkinson's disease EEG models fail in clinical deployment because they overfit to the specific patient populations and recording setups they were trained on. Supervised models like TransformEEG achieve strong within-dataset accuracy (78.45% balanced accuracy) but degrade significantly when evaluated across datasets. We ask: does self-supervised pretraining on unlabeled EEG data produce representations that generalize better across patient populations? We pretrain a TransformEEG encoder with SimCLR contrastive learning on a large unlabeled EEG corpus, then fine-tune on the same four labeled Parkinson's datasets used in the original TransformEEG paper. Our key metric is cross-dataset generalization — train on one dataset, test on another — which is the clinically relevant measure that prior work has not prioritized.
+EEG-based Parkinson's detection commonly reports high accuracy by pooling several public
+datasets and evaluating with subject-level cross-validation. We show this number is
+**confounded by dataset/site identity**: because label distribution is nearly determined
+by which dataset a recording comes from, a classifier using *no EEG signal at all* — only
+the site label — reaches ~0.93 balanced accuracy on the same protocol, matching or
+exceeding published models. Under an honest **leave-one-dataset-out** (LODO) protocol,
+where the test site is unseen, fixed-threshold balanced accuracy collapses toward chance.
+But that collapse is largely a **calibration failure under domain shift**, not an absence
+of transferable signal: supervised representations still rank PD vs HC on unseen sites
+(AUC ≈ 0.76), and a deployable threshold recovers ≈ 0.64 balanced accuracy. Finally, we
+find that **self-supervised pretraining** — including on a large, disjoint clinical corpus
+(TUH) — and **training-time augmentation** do **not** improve cross-site transfer at the
+scales tested. We argue cross-site PD-EEG should be evaluated with LODO, threshold-
+independent metrics, and an explicit site-prior null.
 
 ---
 
-## Abstract (fill after results)
+## Contributions
+1. **A site-prior null** that quantifies the confound in the standard pooled protocol: a
+   no-EEG, dataset-majority classifier scores 0.93 (segment) / 0.65 (subject) balanced
+   accuracy — ≥ published models on the same metric.
+2. **An honest LODO evaluation** showing the cross-site "failure" is primarily calibration:
+   supervised AUC ≈ 0.76 on unseen sites; a training-derived threshold recovers ≈ 0.64
+   balanced accuracy (vs 0.50 chance).
+3. **A negative result on SSL + augmentation:** neither self-supervised pretraining
+   (OpenNeuro or disjoint TUH, linear-probe and fine-tune) nor augmentation improves
+   cross-site transfer; with analysis of why (domain mismatch, scale, eval protocol).
+4. **Open evaluation tooling:** site-prior null, LODO harness, calibration policies,
+   reproducible montage handling.
 
-- Problem: EEG-based PD detection models lack cross-dataset generalizability
-- Gap: Prior work uses supervised learning on small labeled datasets; SSL has not been systematically applied to PD-specific EEG with cross-dataset eval
-- Method: SimCLR pretraining on [TUH-EEG / OpenNeuro unlabeled data] + fine-tuning on 4 PD datasets, N-LNSO cross-validation
-- Result: SSL pretraining improves balanced accuracy by [X]% and cross-dataset generalization by [Y]%
-- Significance: Demonstrates SSL as a path toward clinically deployable EEG-based PD detection
+---
+
+## Abstract (fill last; numbers below are current best estimates)
+- Problem: pooled-protocol PD-EEG accuracy conflates pathology with site identity.
+- Finding 1: no-EEG site null ≈ 0.93 on the standard metric.
+- Finding 2: under LODO, supervised AUC ≈ 0.76±0.03; calibrated bal-acc ≈ 0.64±0.03.
+- Finding 3: SSL pretraining and augmentation do not improve cross-site transfer.
+- Significance: a corrected evaluation protocol + an honest cross-site baseline for the field.
 
 ---
 
 ## 1. Introduction
+- ¶1 *(students can draft)* — clinical problem: PD prevalence; EEG as accessible biomarker; models must work across sites/hardware to be deployable.
+- ¶2 — what exists: DL for PD-EEG (EEGNet, transformers, TransformEEG 78.45%); all evaluate on a **pooled** multi-dataset protocol; cross-site generalization under-examined.
+- ¶3 — the problem with pooling: when sites have imbalanced labels and are trivially identifiable, pooled accuracy can be reached without learning pathology (forward-reference our null).
+- ¶4 — what we do: introduce the site-prior null; evaluate with LODO + AUC + calibration; test whether SSL closes the cross-site gap.
+- ¶5 — contributions (above).
 
-**Paragraph 1 — Hook: the clinical problem**
-- PD affects 10M+ people globally; early detection improves outcomes
-- EEG is non-invasive, clinically accessible, shows promise for PD biomarker detection
-- Problem: models trained at one site/dataset fail when applied elsewhere
+## 2. Related Work  *(STUDENTS — see docs/related_works.md)*
+- 2.1 EEG-based Parkinson's detection (TransformEEG + the 4 datasets + DL methods).
+- 2.2 Evaluation pitfalls in EEG-DL: subject/segment leakage, preprocessing variability, **site/batch effects** (ComBat), N-LNSO.
+- 2.3 Self-supervised learning for EEG (LaBraM, BIOT, BENDR, SelfEEG, EEGPT) — and whether any show cross-site/domain-generalization gains.
+- 2.4 Calibration under domain shift (temperature scaling; OOD calibration).
 
-**Paragraph 2 — What exists and why it's not enough**
-- Deep learning for PD EEG: CNNs, transformers (TransformEEG achieves 78.45% balanced accuracy)
-- All rely on supervised learning with scarce labeled data
-- Generalization gap: high within-dataset accuracy, unknown cross-dataset performance
-- Root cause: small labeled datasets cause overfitting to dataset-specific artifacts
+## 3. Datasets & Preprocessing  *(STUDENTS draft; Claude owns the montage subsection)*
+- 3.1 Datasets — the characterization table (PD/HC, task, montage, sfreq, role). Use the table in `docs/related_works.md`.
+- 3.2 Preprocessing — bandpass 1–45 Hz, resample, 16 s windows @ 25% overlap, per-segment per-channel z-score.
+- 3.3 **Channel harmonization (our finding):** the OpenNeuro-derived 29-ch set leaves 14/29 channels dead in TUH; we use the 19-ch TUH∩OpenNeuro montage (with old→new 10-20 renaming). *(Claude)*
 
-**Paragraph 3 — The SSL opportunity**
-- SSL has driven generalization improvements in NLP (BERT), vision (MAE), and recently biomedical signals (DreaMS for mass spectra, LaBraM for EEG)
-- Key insight: large unlabeled EEG corpora exist (TUH-EEG: tens of thousands of recordings) — SSL can exploit them
-- Nobody has systematically evaluated SSL pretraining for cross-dataset PD detection
+## 4. Methods  *(MENTOR + CLAUDE)*
+- 4.1 Protocols: combined N-LNSO (the standard, site-confounded) vs **LODO** (honest cross-site). Subject-level aggregation.
+- 4.2 **Site-prior null**: predict each dataset's majority class; report alongside every pooled number.
+- 4.3 Metrics: balanced accuracy (subject-level, median±IQR), **ROC-AUC** (threshold-independent), bootstrap CIs.
+- 4.4 **Calibration policies** under domain shift: fixed-0.5, train-transferred (deployable), prevalence-matched, oracle ceiling.
+- 4.5 Models: supervised TransformEEG (from scratch); SSL (VICReg) pretraining → linear probe & fine-tune; augmentation ablation.
 
-**Paragraph 4 — What we do**
-- Pretrain TransformEEG encoder with SimCLR on [unlabeled corpus]
-- Fine-tune on 4 labeled PD datasets (same as TransformEEG paper — fair comparison)
-- Primary eval: cross-dataset generalization (train on A, test on B)
-- Secondary eval: within-dataset balanced accuracy vs TransformEEG baseline
+## 5. Results  *(MENTOR + CLAUDE for numbers; STUDENTS for figures)*
+- **5.1 The confound** — Table: pooled combined-N-LNSO vs the site-prior null (0.93 seg / 0.65 subj). *Fig 1: no-EEG null vs published accuracy.*
+- **5.2 Honest cross-site (LODO)** — fixed-threshold collapse → calibration recovery. Supervised: AUC 0.76±0.03, deployable 0.64±0.03, prevalence 0.69. *Fig 2: combined vs LODO + calibration policies.*
+- **5.3 SSL does not help** — AUC: supervised 0.76, SSL-OpenNeuro 0.58, SSL-TUH 0.53 (linear probe); fine-tune + data-efficiency [PENDING battery]; augmentation no effect. *Fig 3: cross-site AUC by method; Fig 4: data-efficiency curves.*
+- Table: full LODO results (AUC, calibrated bal-acc) × {supervised, SSL-OpenNeuro, SSL-TUH, aug} with seed error bars.
 
-**Paragraph 5 — Contributions**
-1. First systematic study of SSL pretraining for cross-dataset PD EEG detection
-2. Demonstrate [X]% improvement in cross-dataset generalization vs supervised baseline
-3. Open-source pipeline: preprocessing + pretraining + evaluation (github link)
+## 6. Discussion  *(MENTOR + CLAUDE)*
+- Why pooled accuracy misleads; the site shortcut; why subject-level + LODO + null are necessary.
+- Cross-site failure as a calibration problem — practical implication (deployable thresholds), and the limit (we still need site-aware calibration).
+- Why SSL didn't help: domain mismatch (clinical TUH vs resting-state PD), scale, linear-probe vs fine-tune; what would be needed (resting-state HC pretraining, much larger scale).
+- Limitations: 4 datasets / 3 held-out sites, single architecture, small subject counts, SSL scale ceiling on our hardware.
 
----
-
-## 2. Related Work
-
-**2.1 EEG-Based Parkinson's Detection**
-- Traditional ML approaches (feature engineering)
-- Deep learning: EEGNet, DeepConvNet, transformers
-- TransformEEG (Del Pup et al., 2025): channel-specific tokenization, 78.45% balanced accuracy, 4 labeled datasets, N-LNSO evaluation
-- Limitation of all: supervised, small datasets, no cross-dataset eval
-
-**2.2 Self-Supervised Learning for EEG**
-- Survey (Weng et al., 2024): SSL is effective for general EEG classification
-- SelfEEG library (Del Pup et al., 2024): contrastive learning tools for EEG
-- LaBraM, BIOT: large-scale EEG foundation models — general purpose
-- Gap: none of the above evaluated for Parkinson's with cross-dataset generalization
-
-**2.3 SSL for Biomedical Signals (positioning)**
-- DreaMS (Bushuiev et al., 2025): SSL on mass spectra → state-of-the-art fine-tuning performance
-- MAMMAL (Shoshan et al., 2024): multi-modal biomedical foundation model
-- Pattern: SSL pretraining on abundant unlabeled data → robust fine-tuning with few labels
-- We apply this pattern to EEG for the first time in Parkinson's context
+## 7. Conclusion
+- The field's cross-dataset PD-EEG accuracy is substantially a site artifact; report the null.
+- Honest cross-site detection is real but modest and calibration-bound (AUC ~0.76, deployable ~0.64).
+- SSL pretraining is not a free cross-site win at these scales — a useful negative for the community.
 
 ---
 
-## 3. Methods
-
-**3.1 Datasets**
-
-*Unlabeled pretraining:*
-- [TUH-EEG Corpus (if access granted)] OR OpenNeuro general EEG recordings
-- N recordings, duration, channel counts
-
-*Labeled fine-tuning (same as TransformEEG paper):*
-
-| Dataset | Subjects | PD | HC | Sfreq | Channels |
-|---------|----------|----|----|-------|----------|
-| ds004148 | [N] | [N] | [N] | [X]Hz | [X] |
-| ds002778 | [N] | [N] | [N] | [X]Hz | [X] |
-| ds003490 | [N] | [N] | [N] | [X]Hz | [X] |
-| ds004584 | [N] | [N] | [N] | [X]Hz | [X] |
-
-**3.2 Preprocessing**
-- Bandpass filter: 0.5–40 Hz (Hamming window)
-- Resample: 256 Hz
-- Channel alignment: 61 channels (padding/selection)
-- Segmentation: 4-second epochs
-- Normalization: per-channel z-score
-
-**3.3 Model Architecture**
-- TransformEEG encoder: depthwise convolutional tokenizer + transformer (4 layers, 4 heads, d=244)
-- SSL pretraining: SimCLR with projection head (244→244→128)
-- Fine-tuning: frozen/unfrozen encoder + 2-class linear head
-
-**3.4 SSL Pretraining (SimCLR)**
-- Augmentations: random crop (70–90%), Gaussian noise (σ=0.05), channel dropout (p=0.3)
-- Loss: NT-Xent (temperature=0.5)
-- Optimizer: Adam (lr=2.5e-4, β=(0.75, 0.999))
-- Scheduler: exponential decay (γ=0.99)
-- Early stopping: patience=30, min_delta=1e-4
-- Max epochs: 300
-
-**3.5 Fine-Tuning**
-- Pretrained encoder + classification head
-- Adam (lr=1e-3), 50 epochs per fold
-- Evaluation: 10-outer N-LNSO cross-validation (matching TransformEEG protocol)
-
-**3.6 Evaluation Protocol**
-- *Within-dataset*: N-LNSO CV, metrics: balanced accuracy, sensitivity, specificity
-- *Cross-dataset*: train on dataset A, evaluate on dataset B (leave-one-dataset-out)
-- Baseline comparison: TransformEEG supervised (78.45% balanced accuracy)
-
----
-
-## 4. Results
-
-**Table 1: Within-Dataset Performance (Balanced Accuracy ± std)**
-
-| Model | ds004148 | ds002778 | ds003490 | ds004584 | Mean |
-|-------|----------|----------|----------|----------|------|
-| TransformEEG (reported) | — | — | — | — | 78.45% |
-| Supervised baseline (ours) | [X] | [X] | [X] | [X] | [X] |
-| SSL pretrained (ours) | [X] | [X] | [X] | [X] | [X] |
-| **Δ SSL vs supervised** | [X] | [X] | [X] | [X] | **[X]** |
-
-**Table 2: Cross-Dataset Generalization (Train → Test)**
-
-| Train \ Test | ds004148 | ds002778 | ds003490 | ds004584 |
-|--------------|----------|----------|----------|----------|
-| Supervised baseline | [X] | [X] | [X] | [X] |
-| SSL pretrained | [X] | [X] | [X] | [X] |
-
-**Figure 1: Training pipeline diagram**
-- Pretraining phase (SSL on unlabeled) → Fine-tuning phase (labeled PD data)
-
-**Figure 2: t-SNE of encoder representations**
-- Supervised baseline vs SSL pretrained — compare clustering of PD vs HC
-
-**Figure 3: Cross-dataset generalization heatmap**
-- 4×4 matrix, supervised vs SSL
-
----
-
-## 5. Discussion
-
-- Did SSL improve within-dataset accuracy? By how much?
-- More importantly: did it improve cross-dataset generalization? (the key claim)
-- Why it works: SSL forces the encoder to learn general neural signal patterns rather than dataset-specific artifacts
-- Limitations: pretraining corpus size, channel alignment tradeoffs, single SSL method (SimCLR)
-- Connection to foundation model paradigm: this is the same recipe as DreaMS, BERT, etc. — just for brain signals
-
----
-
-## 6. Conclusion
-
-- SSL pretraining on unlabeled EEG data improves generalization for Parkinson's detection
-- Cross-dataset eval as the right benchmark for clinical deployment
-- Open pipeline released for community use
-- Future: larger pretraining corpora, other SSL methods (MAE), multi-task fine-tuning
-
----
-
-## References (key ones)
-
-- Del Pup et al. (2025) — TransformEEG
-- Del Pup et al. (2024) — SelfEEG
-- Weng et al. (2024) — SSL for EEG survey
-- Bushuiev et al. (2025) — DreaMS (Nature Biotechnology)
-- Shoshan et al. (2024) — MAMMAL
-- Chen et al. (2020) — SimCLR
-- OpenNeuro datasets: ds004148, ds002778, ds003490, ds004584
+## References (key)
+- Del Pup et al. 2025 — TransformEEG · Del Pup et al. 2024 — SelfEEG / preprocessing variability
+- Jiang et al. 2024 — LaBraM · Yang et al. 2023 — BIOT · Kostas et al. 2021 — BENDR
+- Johnson et al. 2007 — ComBat · Guo et al. 2017 — calibration / temperature scaling
+- Bardes et al. 2022 — VICReg · OpenNeuro: ds004148/002778/003490/004584 · Obeid & Picone 2016 — TUH
