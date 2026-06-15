@@ -65,6 +65,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is
 SEED = int(os.environ.get("LODO_SEED", "0"))
 AUGMENT = os.environ.get("LODO_AUGMENT", "0") == "1"   # training-time augmentation (supervised)
 AUG_PROB = 0.75                                         # paper applies augmentation ~75% of the time
+INIT_ENCODER = os.environ.get("LODO_INIT_ENCODER", "")  # supervised mode: init encoder from this SSL ckpt (fine-tune)
+LABEL_FRAC = float(os.environ.get("LODO_LABEL_FRAC", "1.0"))  # data-efficiency: fraction of TRAIN subjects kept
 
 
 class _ChSel(Dataset):
@@ -94,6 +96,21 @@ def load_all(data_dir):
         n_pd = sum(s[1] == 1 for s in samples)
         print(f"  {ds_id}: {len(samples)} segs  PD={n_pd}  HC={len(samples)-n_pd}")
     return by_ds, flat
+
+
+def _subsample_train(train_samples, frac, seed):
+    """Keep a stratified `frac` of training SUBJECTS (data-efficiency sweep)."""
+    if frac >= 1.0:
+        return train_samples
+    subj_label = {s[2]: s[1] for s in train_samples}
+    pd_subj = sorted(k for k, v in subj_label.items() if v == 1)
+    hc_subj = sorted(k for k, v in subj_label.items() if v == 0)
+    rng = np.random.default_rng(seed)
+    def take(lst):
+        n = max(1, int(round(len(lst) * frac)))
+        return {lst[i] for i in rng.permutation(len(lst))[:n]}
+    keep = take(pd_subj) | take(hc_subj)
+    return [s for s in train_samples if s[2] in keep]
 
 
 # ── Per-segment scoring helpers ───────────────────────────────────────────────
@@ -159,6 +176,8 @@ def train_supervised(train_samples):
     pos_weight = torch.tensor([n_hc / max(n_pd, 1)], device=DEVICE)
 
     encoder = build_encoder(Chan=N_CHANNELS, seed=SEED)
+    if INIT_ENCODER:
+        encoder.load_state_dict(torch.load(INIT_ENCODER, map_location="cpu"))  # SSL fine-tune init
     model = EEGClassifier(encoder, nb_classes=2).to(DEVICE)
     opt = torch.optim.Adam(model.parameters(), lr=SUP_LR, betas=(0.75, 0.999), weight_decay=0.0)
     sched = torch.optim.lr_scheduler.ExponentialLR(opt, gamma=0.99)
@@ -217,7 +236,8 @@ def run(mode, encoder_path=None):
     torch.manual_seed(SEED); np.random.seed(SEED); random.seed(SEED)
     print(f"\n{'='*64}")
     print(f"LODO evaluation — mode={mode} | Chan={N_CHANNELS} | seed={SEED} | "
-          f"augment={AUGMENT} | device={DEVICE}")
+          f"augment={AUGMENT} | init={'scratch' if not INIT_ENCODER else Path(INIT_ENCODER).name} | "
+          f"label_frac={LABEL_FRAC} | device={DEVICE}")
     print(f"{'='*64}\n")
 
     by_ds, flat = load_all(DATA_DIR)
@@ -235,9 +255,12 @@ def run(mode, encoder_path=None):
         print(f"  ── Hold out {held} ─────────────────────────────")
         test_samples = by_ds[held]
         train_samples = [s for d, lst in by_ds.items() if d != held for s in lst]
+        if LABEL_FRAC < 1.0:
+            train_samples = _subsample_train(train_samples, LABEL_FRAC, SEED)
         n_tr_pd = sum(s[1] == 1 for s in train_samples)
-        print(f"    train={len(train_samples)} (PD={n_tr_pd} HC={len(train_samples)-n_tr_pd}) "
-              f"from {[d for d in by_ds if d != held]}")
+        n_tr_subj = len({s[2] for s in train_samples})
+        print(f"    train={len(train_samples)} (PD={n_tr_pd} HC={len(train_samples)-n_tr_pd}, "
+              f"{n_tr_subj} subj, frac={LABEL_FRAC}) from {[d for d in by_ds if d != held]}")
         print(f"    test ={len(test_samples)} ({held})")
 
         if mode == "supervised":
@@ -291,12 +314,13 @@ def run(mode, encoder_path=None):
             "calibration": cal_macro,
         },
         "config": {"n_channels": N_CHANNELS, "heldout_ids": HELDOUT_IDS, "seed": SEED,
-                   "augment": AUGMENT, "sup_epochs": SUP_EPOCHS, "probe_epochs": PROBE_EPOCHS,
-                   "data_dir": DATA_DIR},
+                   "augment": AUGMENT, "init_encoder": INIT_ENCODER or None, "label_frac": LABEL_FRAC,
+                   "sup_epochs": SUP_EPOCHS, "probe_epochs": PROBE_EPOCHS, "data_dir": DATA_DIR},
     }
     out_dir = Path("results/lodo"); out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tag = f"s{SEED}_{'aug' if AUGMENT else 'noaug'}"
+    init_tag = "scratch" if not INIT_ENCODER else Path(INIT_ENCODER).stem.replace("pretrained_encoder_", "")
+    tag = f"s{SEED}_{init_tag}_f{int(round(LABEL_FRAC*100))}_{'aug' if AUGMENT else 'noaug'}"
     out_path = out_dir / f"lodo_{mode}_{tag}_{ts}.json"
     with open(out_path, "w") as f:
         json.dump(out, f, indent=2)
