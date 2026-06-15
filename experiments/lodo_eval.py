@@ -37,8 +37,10 @@ from datetime import datetime
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+import random
 from src.model import build_encoder, EEGClassifier
 from src.preprocess import common_ch_indices
+from src.pretrain import eeg_augment_batch
 from src.finetune import LabeledEEGDataset
 from src.honest_eval import (
     site_prior_null, subject_level_metrics, segment_level_metrics,
@@ -58,6 +60,11 @@ DATA_DIR    = os.environ.get("DATA_DIR", "data/processed_unified")
 SUP_EPOCHS, SUP_LR, SUP_BATCH = 50, 2.5e-4, 32
 PROBE_EPOCHS, PROBE_LR, PROBE_BATCH = 30, 1e-3, 256
 DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+
+# Robustness / improvement knobs (env-driven so a battery can sweep them).
+SEED = int(os.environ.get("LODO_SEED", "0"))
+AUGMENT = os.environ.get("LODO_AUGMENT", "0") == "1"   # training-time augmentation (supervised)
+AUG_PROB = 0.75                                         # paper applies augmentation ~75% of the time
 
 
 class _ChSel(Dataset):
@@ -127,6 +134,8 @@ def _fold_report(name, scores, samples, train_scores=None, train_samples=None):
         tr_subs = np.array([s[2] for s in train_samples])
         tr_s, tr_l = subject_scores(train_scores, tr_labels, tr_subs)
         cal = calibration_report(te_s, te_l, tr_s, tr_l)
+        cal["subject_scores"] = te_s.tolist()   # raw, for free post-hoc calibration / CIs
+        cal["subject_labels"] = te_l.tolist()
 
     line = (f"    [{name}] segment={seg['balanced_accuracy']:.3f} | "
             f"subject(0.5)={sub['balanced_accuracy']:.3f} "
@@ -149,7 +158,7 @@ def train_supervised(train_samples):
     n_hc = sum(s[1] == 0 for s in train_samples)
     pos_weight = torch.tensor([n_hc / max(n_pd, 1)], device=DEVICE)
 
-    encoder = build_encoder(Chan=N_CHANNELS)
+    encoder = build_encoder(Chan=N_CHANNELS, seed=SEED)
     model = EEGClassifier(encoder, nb_classes=2).to(DEVICE)
     opt = torch.optim.Adam(model.parameters(), lr=SUP_LR, betas=(0.75, 0.999), weight_decay=0.0)
     sched = torch.optim.lr_scheduler.ExponentialLR(opt, gamma=0.99)
@@ -159,6 +168,11 @@ def train_supervised(train_samples):
     for ep in range(SUP_EPOCHS):
         for x, y in train_loader:
             x, y = x.float().to(DEVICE), y.float().to(DEVICE)
+            if AUGMENT and random.random() < AUG_PROB:
+                try:
+                    x = eeg_augment_batch(x)
+                except Exception:
+                    pass  # fall back to the raw batch if augmentation fails
             opt.zero_grad()
             crit(model(x).squeeze(-1), y).backward()
             opt.step()
@@ -200,8 +214,10 @@ def _score_probe(encoder, head, samples):
 # ── Driver ────────────────────────────────────────────────────────────────────
 
 def run(mode, encoder_path=None):
+    torch.manual_seed(SEED); np.random.seed(SEED); random.seed(SEED)
     print(f"\n{'='*64}")
-    print(f"LODO evaluation — mode={mode} | Chan={N_CHANNELS} | device={DEVICE}")
+    print(f"LODO evaluation — mode={mode} | Chan={N_CHANNELS} | seed={SEED} | "
+          f"augment={AUGMENT} | device={DEVICE}")
     print(f"{'='*64}\n")
 
     by_ds, flat = load_all(DATA_DIR)
@@ -274,12 +290,14 @@ def run(mode, encoder_path=None):
             "subject": fold_summary(sub_ba),
             "calibration": cal_macro,
         },
-        "config": {"n_channels": N_CHANNELS, "heldout_ids": HELDOUT_IDS,
-                   "sup_epochs": SUP_EPOCHS, "probe_epochs": PROBE_EPOCHS, "data_dir": DATA_DIR},
+        "config": {"n_channels": N_CHANNELS, "heldout_ids": HELDOUT_IDS, "seed": SEED,
+                   "augment": AUGMENT, "sup_epochs": SUP_EPOCHS, "probe_epochs": PROBE_EPOCHS,
+                   "data_dir": DATA_DIR},
     }
     out_dir = Path("results/lodo"); out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"lodo_{mode}_{ts}.json"
+    tag = f"s{SEED}_{'aug' if AUGMENT else 'noaug'}"
+    out_path = out_dir / f"lodo_{mode}_{tag}_{ts}.json"
     with open(out_path, "w") as f:
         json.dump(out, f, indent=2)
     print(f"Results saved to {out_path}")
