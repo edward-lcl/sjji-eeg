@@ -87,7 +87,7 @@ python experiments/tuh_pretrain_lodo.py                           # pretrain a d
 
 - ✅ Confound, calibration, and SSL-negative — established locally, seeded.
 - ⏳ Paper writeup in progress (outline + related works seeded).
-- ⏳ **Full-scale TUH pretrain (SageMaker)** — *optional, low-priority confirmatory run*, blocked on AWS GPU quota. The fair small-scale eval was already flat, so this would strengthen the negative ("even at scale"), not change the story. See [`docs/tuh_lodo_experiment_plan.md`](docs/tuh_lodo_experiment_plan.md).
+- ⏳ **Full-scale TUH pretrain** — *optional, confirmatory only*. AWS new-account GPU quota was **denied** (insufficient usage history); if pursued, it runs on a rented GPU pulling TUH fresh from NEDC (no AWS). The fair small-scale eval was already flat, so this would strengthen the negative ("even at scale"), not change the story. See [`docs/tuh_lodo_experiment_plan.md`](docs/tuh_lodo_experiment_plan.md).
 
 ## References
 - TransformEEG: Del Pup et al. (2025) — [GitHub](https://github.com/MedMaxLab/TransformEEG)

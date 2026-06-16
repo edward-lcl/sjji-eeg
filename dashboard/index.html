@@ -92,7 +92,7 @@
     <div class="badges">
       <span class="badge b-green"><span class="dot"></span>Experiments: complete (seeded)</span>
       <span class="badge b-blue"><span class="dot"></span>Paper: outline + related-works seeded</span>
-      <span class="badge b-amber"><span class="dot"></span>AWS GPU quota: pending</span>
+      <span class="badge b-amber"><span class="dot"></span>AWS GPU quota: denied (new acct)</span>
     </div>
     <div class="links">
       <a href="https://github.com/edward-lcl/sjji-eeg" target="_blank" rel="noopener">GitHub repo ↗</a>
@@ -217,10 +217,10 @@
     <div class="card">
       <h3>Infra & status</h3>
       <ul class="tight">
-        <li><span class="pill p-amber">pending</span> AWS GPU quota (new account) — requests still open, g5.4xlarge applied = 0. No cloud jobs yet.</li>
-        <li><span class="pill p-green">done</span> All experiments run locally (Apple GPU): confound, calibration, SSL-negative, data-efficiency.</li>
-        <li><span class="pill p-green">done</span> Code on branch <code>lodo-calibration</code> (PR #2): site-prior null, LODO harness, calibration, seeds.</li>
-        <li>Full-scale TUH-SSL on the cloud = now a <b>low-priority</b> bet (the fair test was already flat at small scale).</li>
+        <li><span class="pill p-red">denied</span> AWS GPU quota (new account) rejected — insufficient usage history (new-account catch-22). No SageMaker GPU available.</li>
+        <li><span class="pill p-green">done</span> All experiments run locally (Apple GPU), error-barred: confound, calibration, SSL-negative, data-efficiency (3 seeds).</li>
+        <li><span class="pill p-green">done</span> Code, README, paper draft + figures all merged to <code>main</code> (site-prior null, LODO harness, calibration, seeds).</li>
+        <li>Full-scale TUH-SSL = <b>optional/confirmatory</b>; if pursued, via a rented GPU pulling TUH fresh from NEDC (no AWS). 15 TB of TUH data removed from S3 to control cost.</li>
       </ul>
     </div>
     <div class="card">
@@ -238,7 +238,7 @@
   </div>
 
   <div class="foot">
-    Repo <code>sjji-eeg</code> · branch <code>lodo-calibration</code> · numbers are 19-channel leave-one-dataset-out, subject-level, seeded where noted ·
+    Repo <code>sjji-eeg</code> · branch <code>main</code> · numbers are 19-channel leave-one-dataset-out, subject-level, seeded where noted ·
     chance = 0.50, no-EEG site null = 0.65 (subject) / 0.93 (segment). A living document — ping for changes.
   </div>
 </div>
