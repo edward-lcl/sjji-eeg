@@ -65,6 +65,9 @@
   .p-amber{background:rgba(255,180,84,.16);color:var(--amber)}
   .p-violet{background:rgba(176,140,255,.16);color:var(--violet)}
   ul.tight{margin:6px 0 0;padding-left:18px;color:var(--mut)} ul.tight li{margin:5px 0}
+  ol.steps{margin:8px 0 0;padding-left:20px;color:var(--mut);font-size:13.5px} ol.steps li{margin:7px 0}
+  ol.steps b{color:var(--ink)}
+  .note.brainy{background:rgba(90,169,255,.08);border:1px solid rgba(90,169,255,.22);border-radius:9px;padding:10px 12px;color:var(--mut);font-size:12.8px;margin-top:10px}
   .meansbox{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
   .means{flex:1;min-width:120px;background:var(--panel2);border-radius:10px;padding:10px 12px}
   .means .lab{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
@@ -209,6 +212,53 @@
       <div class="ct">That number is inflated by a hidden site confound (a no-EEG model scores 0.93). On the honest cross-hospital test it collapsed — and the collapse turned out to be a fixable calibration issue. SSL didn't help.</div></div>
     <div class="step s3"><div class="h">Why this is a win</div>
       <div class="ct">Exposing a field-wide measurement flaw, giving an <i>honest</i> cross-site baseline, and reporting a careful negative is a stronger, more publishable contribution than another inflated score. Good science follows the evidence — even when it overturns the hypothesis.</div></div>
+  </div>
+
+  <!-- WRITE THE PAPER -->
+  <h2>✍️ Writing the paper <span class="tip">Saanvi &amp; Alex — this is your part, with everything you need to start</span></h2>
+
+  <div class="card" style="margin-bottom:16px;border-left:3px solid var(--green)">
+    <h3>The one story everything supports</h3>
+    <div class="ct">Your sections should make a reader believe this three-part claim: <b>(1)</b> the field's pooled accuracy is a site artifact (a no-EEG model scores 0.93); <b>(2)</b> honest cross-site detection is real but calibration-bound (AUC 0.76 → 0.64 with a deployable threshold); <b>(3)</b> self-supervised pretraining doesn't improve it. Write <i>toward</i> that story. Full draft to slot into:
+    <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/paper/draft.md" target="_blank" rel="noopener">paper/draft.md</a> · outline: <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/paper/OUTLINE.md" target="_blank" rel="noopener">OUTLINE.md</a> · scaffold: <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/docs/related_works.md" target="_blank" rel="noopener">related_works.md</a>.</div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card lead" style="--accent:var(--blue)">
+      <h3>Saanvi — Related Work (EEG &amp; PD) + Datasets</h3>
+      <ol class="steps">
+        <li><b>Read</b> the Track-A papers in the scaffold: TransformEEG, the preprocessing/leakage papers, ComBat, and the 4 dataset papers.</li>
+        <li><b>Fill the table</b> — one row each: <i>method · datasets · key result · relevance to us</i>.</li>
+        <li><b>Write</b> ~2 short paragraphs: how the field evaluates PD-EEG, and why pooled accuracy can mislead (this sets up Finding 1).</li>
+        <li><b>Verify</b> the dataset table (montage, #subjects, quirks) — the numbers are pre-filled in the scaffold.</li>
+      </ol>
+      <div class="note brainy">🧠 <b>Make it yours:</b> for each paper, decide — does it <i>support</i> or <i>challenge</i> our findings? A paper that contradicts us is the most valuable kind — flag it. What's the <i>one sentence</i> that says why our work is different?</div>
+    </div>
+    <div class="card lead" style="--accent:var(--violet)">
+      <h3>Alex — Related Work (SSL &amp; calibration) + Figures</h3>
+      <ol class="steps">
+        <li><b>Read</b> the Track-B papers: LaBraM, BIOT, BENDR, SelfEEG, and Guo et al. (calibration).</li>
+        <li><b>Fill the table</b> — same format — noting whether anyone shows SSL <i>helping</i> cross-site (relevant to our negative).</li>
+        <li><b>Make the figures</b>: run <code>python experiments/make_figures.py</code> → it draws Figs 1–4 from the data; then style them (labels, fonts, colors).</li>
+        <li><b>Write</b> ~2 short paragraphs on SSL-for-EEG and calibration-under-shift.</li>
+      </ol>
+      <div class="note brainy">🧠 <b>Make it yours:</b> a good figure makes its point in 3 seconds — after each one, ask someone "what's the takeaway?" If they can't say it instantly, fix it. And: why do <i>you</i> think SSL didn't help here?</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>Paper sections — who &amp; status</h3>
+    <table>
+      <thead><tr><th>Section</th><th>Owner</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>Abstract · Methods · Results · Discussion · Conclusion</td><td>Edward + Claude</td><td><span class="pill p-green">drafted</span></td></tr>
+        <tr><td>Related Work — EEG/PD &amp; datasets</td><td class="who">Saanvi</td><td><span class="pill p-amber">in progress</span></td></tr>
+        <tr><td>Related Work — SSL &amp; calibration</td><td class="who">Alex</td><td><span class="pill p-amber">in progress</span></td></tr>
+        <tr><td>Figures 1–4</td><td class="who">Alex</td><td><span class="pill p-amber">draft script ready</span></td></tr>
+        <tr><td>Introduction hook (¶1)</td><td>Saanvi or Alex</td><td><span class="pill p-amber">to do</span></td></tr>
+      </tbody>
+    </table>
+    <div class="note">✅ <b>What "good" looks like:</b> 2–4 sentences per paper, always with a "relevance to us" line; figures readable in 3 seconds; every claim points back to the three findings. Stuck or unsure? Write your question in the <a href="https://docs.google.com/document/d/18ld8zbX2_L9XANK_K4jzyGlLFOw_s7qPeRrFawraQZM/edit?tab=t.0" target="_blank" rel="noopener">weekly check-in doc</a> — no question is too small.</div>
   </div>
 
   <!-- STATUS + OWNERSHIP -->
