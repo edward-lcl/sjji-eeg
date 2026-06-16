@@ -159,6 +159,69 @@ def fold_summary(values):
     }
 
 
+def subject_scores(scores, labels, subjects):
+    """Aggregate per-segment P(PD) to one (mean-score, label) per subject.
+    Returns (subj_scores, subj_labels) aligned arrays."""
+    scores = np.asarray(scores, dtype=float)
+    labels = np.asarray(labels)
+    subjects = np.asarray(subjects)
+    keys = np.unique(subjects)
+    ss = np.array([scores[subjects == k].mean() for k in keys])
+    sl = np.array([int(labels[subjects == k][0]) for k in keys])
+    return ss, sl
+
+
+def _ba(labels, scores, thr):
+    return float(balanced_accuracy_score(labels, (scores > thr).astype(int)))
+
+
+def calibration_report(test_scores, test_labels, train_scores=None, train_labels=None):
+    """How much cross-site balanced accuracy is recoverable once you stop using the
+    fixed 0.5 threshold. All at the subject level. Threshold policies:
+      - fixed_0.5         : the default operating point (mis-calibrates across sites)
+      - train_transferred : threshold that maximizes bal_acc on the TRAINING sites,
+                            applied to the held-out site (fully honest, deployable)
+      - prevalence_matched: threshold so predicted positive-rate == the held-out site's
+                            true PD prevalence (mild, realistic clinical adaptation)
+      - oracle_youden     : threshold maximizing bal_acc ON the held-out labels — NOT
+                            achievable honestly; the ceiling implied by the ROC-AUC
+    """
+    ts = np.asarray(test_scores, dtype=float)
+    tl = np.asarray(test_labels, dtype=int)
+    out = {"n_subjects": int(len(tl)), "fixed_0.5": _ba(tl, ts, 0.5)}
+
+    prev = tl.mean()
+    if 0 < prev < 1:
+        thr_prev = float(np.quantile(ts, 1 - prev))
+        out["prevalence_matched"] = _ba(tl, ts, thr_prev)
+        try:
+            from sklearn.metrics import roc_auc_score
+            out["roc_auc"] = float(roc_auc_score(tl, ts))
+        except Exception:
+            out["roc_auc"] = None
+    else:
+        out["prevalence_matched"] = out["fixed_0.5"]
+        out["roc_auc"] = None
+
+    cand = np.unique(ts)
+    if len(cand):
+        out["oracle_youden"] = float(max(_ba(tl, ts, t) for t in cand))
+    else:
+        out["oracle_youden"] = out["fixed_0.5"]
+
+    if train_scores is not None and train_labels is not None:
+        rs = np.asarray(train_scores, dtype=float)
+        rl = np.asarray(train_labels, dtype=int)
+        cand_tr = np.unique(rs)
+        if len(cand_tr) and len(np.unique(rl)) == 2:
+            thr_tr = float(max(cand_tr, key=lambda t: _ba(rl, rs, t)))
+            out["train_transferred"] = _ba(tl, ts, thr_tr)
+            out["train_threshold"] = thr_tr
+        else:
+            out["train_transferred"] = out["fixed_0.5"]
+    return out
+
+
 def bootstrap_ci(values, n_boot=10000, alpha=0.05, seed=0):
     """Bootstrap CI for the mean of per-fold (or per-subject) values."""
     v = np.asarray(values, dtype=float)

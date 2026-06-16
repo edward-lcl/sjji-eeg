@@ -37,12 +37,14 @@ from datetime import datetime
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+import random
 from src.model import build_encoder, EEGClassifier
 from src.preprocess import common_ch_indices
+from src.pretrain import eeg_augment_batch
 from src.finetune import LabeledEEGDataset
 from src.honest_eval import (
     site_prior_null, subject_level_metrics, segment_level_metrics,
-    fold_summary,
+    fold_summary, subject_scores, calibration_report,
 )
 
 # ── Config (matches baseline_combined.py / paper supervised) ───────────────────
@@ -58,6 +60,13 @@ DATA_DIR    = os.environ.get("DATA_DIR", "data/processed_unified")
 SUP_EPOCHS, SUP_LR, SUP_BATCH = 50, 2.5e-4, 32
 PROBE_EPOCHS, PROBE_LR, PROBE_BATCH = 30, 1e-3, 256
 DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+
+# Robustness / improvement knobs (env-driven so a battery can sweep them).
+SEED = int(os.environ.get("LODO_SEED", "0"))
+AUGMENT = os.environ.get("LODO_AUGMENT", "0") == "1"   # training-time augmentation (supervised)
+AUG_PROB = 0.75                                         # paper applies augmentation ~75% of the time
+INIT_ENCODER = os.environ.get("LODO_INIT_ENCODER", "")  # supervised mode: init encoder from this SSL ckpt (fine-tune)
+LABEL_FRAC = float(os.environ.get("LODO_LABEL_FRAC", "1.0"))  # data-efficiency: fraction of TRAIN subjects kept
 
 
 class _ChSel(Dataset):
@@ -89,6 +98,21 @@ def load_all(data_dir):
     return by_ds, flat
 
 
+def _subsample_train(train_samples, frac, seed):
+    """Keep a stratified `frac` of training SUBJECTS (data-efficiency sweep)."""
+    if frac >= 1.0:
+        return train_samples
+    subj_label = {s[2]: s[1] for s in train_samples}
+    pd_subj = sorted(k for k, v in subj_label.items() if v == 1)
+    hc_subj = sorted(k for k, v in subj_label.items() if v == 0)
+    rng = np.random.default_rng(seed)
+    def take(lst):
+        n = max(1, int(round(len(lst) * frac)))
+        return {lst[i] for i in rng.permutation(len(lst))[:n]}
+    keep = take(pd_subj) | take(hc_subj)
+    return [s for s in train_samples if s[2] in keep]
+
+
 # ── Per-segment scoring helpers ───────────────────────────────────────────────
 
 @torch.no_grad()
@@ -114,16 +138,32 @@ def _extract_features(encoder, samples):
     return np.concatenate(feats, 0), np.array(labels)
 
 
-def _fold_report(name, scores, samples):
+def _fold_report(name, scores, samples, train_scores=None, train_samples=None):
     labels = np.array([s[1] for s in samples])
     subs = np.array([s[2] for s in samples])
     seg = segment_level_metrics(scores, labels)
     sub = subject_level_metrics(scores, labels, subs)
-    print(f"    [{name}] segment bal_acc={seg['balanced_accuracy']:.3f} | "
-          f"subject bal_acc={sub['balanced_accuracy']:.3f} "
-          f"(sens={sub['sensitivity']:.3f} spec={sub['specificity']:.3f}, "
-          f"n_subj={sub['n_subjects']})")
-    return {"segment": seg, "subject": sub}
+
+    cal = None
+    if train_scores is not None and train_samples is not None:
+        te_s, te_l = subject_scores(scores, labels, subs)
+        tr_labels = np.array([s[1] for s in train_samples])
+        tr_subs = np.array([s[2] for s in train_samples])
+        tr_s, tr_l = subject_scores(train_scores, tr_labels, tr_subs)
+        cal = calibration_report(te_s, te_l, tr_s, tr_l)
+        cal["subject_scores"] = te_s.tolist()   # raw, for free post-hoc calibration / CIs
+        cal["subject_labels"] = te_l.tolist()
+
+    line = (f"    [{name}] segment={seg['balanced_accuracy']:.3f} | "
+            f"subject(0.5)={sub['balanced_accuracy']:.3f} "
+            f"(sens={sub['sensitivity']:.3f} spec={sub['specificity']:.3f})")
+    if cal:
+        line += (f" | AUC={cal.get('roc_auc') or float('nan'):.3f}"
+                 f"  ba@[train={cal.get('train_transferred', float('nan')):.3f}"
+                 f" prev={cal.get('prevalence_matched', float('nan')):.3f}"
+                 f" oracle={cal.get('oracle_youden', float('nan')):.3f}]")
+    print(line)
+    return {"segment": seg, "subject": sub, "calibration": cal}
 
 
 # ── Supervised LODO ───────────────────────────────────────────────────────────
@@ -135,7 +175,9 @@ def train_supervised(train_samples):
     n_hc = sum(s[1] == 0 for s in train_samples)
     pos_weight = torch.tensor([n_hc / max(n_pd, 1)], device=DEVICE)
 
-    encoder = build_encoder(Chan=N_CHANNELS)
+    encoder = build_encoder(Chan=N_CHANNELS, seed=SEED)
+    if INIT_ENCODER:
+        encoder.load_state_dict(torch.load(INIT_ENCODER, map_location="cpu"))  # SSL fine-tune init
     model = EEGClassifier(encoder, nb_classes=2).to(DEVICE)
     opt = torch.optim.Adam(model.parameters(), lr=SUP_LR, betas=(0.75, 0.999), weight_decay=0.0)
     sched = torch.optim.lr_scheduler.ExponentialLR(opt, gamma=0.99)
@@ -145,6 +187,11 @@ def train_supervised(train_samples):
     for ep in range(SUP_EPOCHS):
         for x, y in train_loader:
             x, y = x.float().to(DEVICE), y.float().to(DEVICE)
+            if AUGMENT and random.random() < AUG_PROB:
+                try:
+                    x = eeg_augment_batch(x)
+                except Exception:
+                    pass  # fall back to the raw batch if augmentation fails
             opt.zero_grad()
             crit(model(x).squeeze(-1), y).backward()
             opt.step()
@@ -186,8 +233,11 @@ def _score_probe(encoder, head, samples):
 # ── Driver ────────────────────────────────────────────────────────────────────
 
 def run(mode, encoder_path=None):
+    torch.manual_seed(SEED); np.random.seed(SEED); random.seed(SEED)
     print(f"\n{'='*64}")
-    print(f"LODO evaluation — mode={mode} | Chan={N_CHANNELS} | device={DEVICE}")
+    print(f"LODO evaluation — mode={mode} | Chan={N_CHANNELS} | seed={SEED} | "
+          f"augment={AUGMENT} | init={'scratch' if not INIT_ENCODER else Path(INIT_ENCODER).name} | "
+          f"label_frac={LABEL_FRAC} | device={DEVICE}")
     print(f"{'='*64}\n")
 
     by_ds, flat = load_all(DATA_DIR)
@@ -205,23 +255,28 @@ def run(mode, encoder_path=None):
         print(f"  ── Hold out {held} ─────────────────────────────")
         test_samples = by_ds[held]
         train_samples = [s for d, lst in by_ds.items() if d != held for s in lst]
+        if LABEL_FRAC < 1.0:
+            train_samples = _subsample_train(train_samples, LABEL_FRAC, SEED)
         n_tr_pd = sum(s[1] == 1 for s in train_samples)
-        print(f"    train={len(train_samples)} (PD={n_tr_pd} HC={len(train_samples)-n_tr_pd}) "
-              f"from {[d for d in by_ds if d != held]}")
+        n_tr_subj = len({s[2] for s in train_samples})
+        print(f"    train={len(train_samples)} (PD={n_tr_pd} HC={len(train_samples)-n_tr_pd}, "
+              f"{n_tr_subj} subj, frac={LABEL_FRAC}) from {[d for d in by_ds if d != held]}")
         print(f"    test ={len(test_samples)} ({held})")
 
         if mode == "supervised":
             model = train_supervised(train_samples)
             scores = _score_supervised(model, test_samples)
+            train_scores = _score_supervised(model, train_samples)
         else:
             encoder = build_encoder(Chan=N_CHANNELS)
             encoder.load_state_dict(torch.load(encoder_path, map_location="cpu"))
             encoder = encoder.to(DEVICE)
             head = train_probe(encoder, train_samples)
             scores = _score_probe(encoder, head, test_samples)
+            train_scores = _score_probe(encoder, head, train_samples)
 
-        folds[held] = _fold_report(held, scores, test_samples)
-        del scores
+        folds[held] = _fold_report(held, scores, test_samples, train_scores, train_samples)
+        del scores, train_scores
 
     # Macro averages across held-out datasets.
     seg_ba = [folds[d]["segment"]["balanced_accuracy"] for d in folds]
@@ -232,6 +287,20 @@ def run(mode, encoder_path=None):
     print(f"    subject bal_acc: mean={np.mean(sub_ba):.3f}  median={np.median(sub_ba):.3f}")
     print(f"    chance = 0.500   |   site-prior null (combined) = "
           f"{null['subject_balanced_accuracy']:.3f} subj / {null['segment_balanced_accuracy']:.3f} seg")
+
+    cal_macro = {}
+    for k in ["fixed_0.5", "train_transferred", "prevalence_matched", "oracle_youden", "roc_auc"]:
+        vals = [folds[d]["calibration"].get(k) for d in folds if folds[d].get("calibration")]
+        vals = [v for v in vals if v is not None]
+        if vals:
+            cal_macro[k] = float(np.mean(vals))
+    if cal_macro:
+        print(f"\n    CALIBRATION (subject bal_acc, macro across held-out sites):")
+        print(f"      fixed 0.5         = {cal_macro.get('fixed_0.5', float('nan')):.3f}  (the collapse)")
+        print(f"      train-transferred = {cal_macro.get('train_transferred', float('nan')):.3f}  (honest, deployable)")
+        print(f"      prevalence-matched= {cal_macro.get('prevalence_matched', float('nan')):.3f}  (realistic clinical)")
+        print(f"      oracle (ceiling)  = {cal_macro.get('oracle_youden', float('nan')):.3f}  (= what the AUC implies)")
+        print(f"      mean ROC-AUC      = {cal_macro.get('roc_auc', float('nan')):.3f}  (threshold-independent)")
     print(f"{'='*64}\n")
 
     out = {
@@ -242,13 +311,17 @@ def run(mode, encoder_path=None):
         "macro": {
             "segment": fold_summary(seg_ba),
             "subject": fold_summary(sub_ba),
+            "calibration": cal_macro,
         },
-        "config": {"n_channels": N_CHANNELS, "heldout_ids": HELDOUT_IDS,
+        "config": {"n_channels": N_CHANNELS, "heldout_ids": HELDOUT_IDS, "seed": SEED,
+                   "augment": AUGMENT, "init_encoder": INIT_ENCODER or None, "label_frac": LABEL_FRAC,
                    "sup_epochs": SUP_EPOCHS, "probe_epochs": PROBE_EPOCHS, "data_dir": DATA_DIR},
     }
     out_dir = Path("results/lodo"); out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"lodo_{mode}_{ts}.json"
+    init_tag = "scratch" if not INIT_ENCODER else Path(INIT_ENCODER).stem.replace("pretrained_encoder_", "")
+    tag = f"s{SEED}_{init_tag}_f{int(round(LABEL_FRAC*100))}_{'aug' if AUGMENT else 'noaug'}"
+    out_path = out_dir / f"lodo_{mode}_{tag}_{ts}.json"
     with open(out_path, "w") as f:
         json.dump(out, f, indent=2)
     print(f"Results saved to {out_path}")
