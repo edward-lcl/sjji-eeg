@@ -86,7 +86,7 @@ python experiments/tuh_pretrain_lodo.py                           # pretrain a d
 ## Status & next
 
 - ✅ Confound, calibration, and SSL-negative — established locally, seeded.
-- ⏳ Paper writeup in progress (outline + related works seeded).
+- ⏳ Paper writeup — targeting the **MICCAI 2026 AMAI workshop** (Springer LNCS, 8 pages), deadline **June 25, 2026**. Methods/Results/Discussion drafted ([`paper/draft.md`](paper/draft.md)); Related Work + figures in progress.
 - ⏳ **Full-scale TUH pretrain** — *optional, confirmatory only*. AWS new-account GPU quota was **denied** (insufficient usage history); if pursued, it runs on a rented GPU pulling TUH fresh from NEDC (no AWS). The fair small-scale eval was already flat, so this would strengthen the negative ("even at scale"), not change the story. See [`docs/tuh_lodo_experiment_plan.md`](docs/tuh_lodo_experiment_plan.md).
 
 ## References

@@ -1,8 +1,10 @@
 # Site Confounds, Calibration, and the Limits of Self-Supervision in Cross-Dataset Parkinson's EEG Detection
 
-> Working draft. **Owners:** Methods/Results/Discussion — Edward + Claude. Related Work (§2) and the
-> Introduction hook (¶1) — Saanvi & Alex. Numbers are 19-channel LODO, subject-level, seeded where noted.
-> Figures referenced are produced by `experiments/make_figures.py` → `paper/figures/`.
+> Working draft. **Target: MICCAI 2026 AMAI workshop — Springer LNCS, 8-page full paper, due June 25, 2026.**
+> Keep it tight to ~8 pages: this draft is the content; the LNCS port trims/formats.
+> **Owners:** Methods/Results/Discussion — Edward + Claude. Related Work (§2) and the Introduction hook
+> (¶1) — Saanvi & Alex. Numbers are 19-channel LODO, subject-level, seeded where noted.
+> Figures: `experiments/make_figures.py` → `paper/figures/`.
 
 ## Abstract
 

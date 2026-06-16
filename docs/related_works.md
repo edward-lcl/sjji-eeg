@@ -38,7 +38,11 @@ cross-site PD" — our own data is the counterexample.
 | Cavanagh et al. — **ds003490** (UNM 3-Stim) `[VERIFY year]` | dataset paper | ds003490 | 25 PD / 25 HC, resting + oddball | eval site |
 | Singh et al., 2023 — **ds004584** | dataset paper | ds004584 | 100 PD / 49 HC, resting | eval site (largest) |
 | Wang et al., 2022 — **ds004148** (EEG test-retest) | dataset paper | ds004148 | 60 HC, resting + cognitive | our HC pool |
-| `[ADD]` 1–2 recent PD-from-EEG deep-learning papers (find via Semantic Scholar) | | | | situates PD-EEG SOTA |
+| ⭐ "Cross-Population Framework for Generalizable PD Detection" (arXiv 2604.23933, 2026) `[VERIFY]` | population-aware evaluation framework under distribution shift | PD-EEG, multi-site | robustness / clinical-reliability eval | **CLOSEST prior work — position against us**: we add the no-EEG site-prior null + the calibration reframe |
+| ⭐ "Channel-Selected Stratified Nested CV for PD-EEG" (arXiv 2601.05276, 2026) `[VERIFY]` | unified eval (subject stratification, windowing, channel selection) to fix methodological flaws | 3 PD datasets | 80.6% cross-dataset | **CLOSE to us** — overlaps our channel + rigor work; we differ via the site-prior null, calibration, and the SSL ablation |
+| GEPD: GAN-Enhanced Generalizable PD-EEG (arXiv 2508.14074, 2025) `[VERIFY]` | GAN augmentation for cross-dataset transfer | PD-EEG | cross-dataset gains | a *generative* take on the same problem; contrast with our (negative) SSL result |
+
+> ⭐ **Novelty positioning (Saanvi — read this).** The field is actively working on cross-dataset PD-EEG and "fixing the evaluation." So our contribution is NOT "we noticed evaluation matters" — others have too. Our *distinct* contributions are: **(1)** the **site-prior null** (a no-EEG model scoring 0.93 quantifies the confound — most papers don't report this), **(2)** the **calibration reframe** (cross-site failure is a *threshold* problem, recoverable to ~0.64), and **(3)** a clean **SSL/augmentation negative**. In Related Work, name the two ⭐ papers explicitly and state in one sentence how we go further. If either already does one of our three things, flag it immediately — that changes our framing.
 
 ## Track B — Self-supervised learning for EEG + calibration under domain shift  *(Student: ____)*
 

@@ -1,8 +1,8 @@
 # Paper Outline
 ## Site Confounds, Calibration, and the Limits of Self-Supervision in Cross-Dataset Parkinson's EEG Detection
 
-**Target venue:** IEEE EMBC / IEEE JBHI / Neurocomputing
-**Status:** Results largely in; data-efficiency sweep + writeup in progress.
+**Target venue:** MICCAI 2026 **AMAI** workshop — Springer LNCS, 8-page full paper. **Deadline: June 25, 2026 (11:59pm PT).** AMAI is modality-agnostic; its themes ("evaluation & validation in real-world settings", "trust") fit our honest-evaluation story. Extended/higher-impact path: ML4H 2026 (Findings, ~Sept) or a journal (IEEE JBHI / J. Neural Engineering).
+**Status:** All experiments complete + seeded. Methods/Results/Discussion drafted. Remaining: Related Work + figures + LNCS port.
 
 > **NOTE — thesis changed.** The original framing ("SSL improves cross-dataset PD
 > detection") was *not* supported by our experiments. This outline reflects what the
