@@ -55,7 +55,7 @@ Under LODO, fixed-0.5 subject-level balanced accuracy is 0.585 ± 0.014 — near
 Across every evaluation, SSL fails to help (Fig. 3, Fig. 4):
 - **Linear probe.** Cross-site AUC is 0.581 ± 0.002 (OpenNeuro pretraining) and 0.526 ± 0.003 (disjoint TUH), versus 0.763 for the supervised model. The disjoint, larger-corpus encoder is the *weakest*, consistent with a domain mismatch between clinical TUH EEG and resting-state PD recordings.
 - **Fine-tuning.** Initializing supervised training from the TUH encoder matches training from scratch at full labels (AUC 0.72 vs 0.73).
-- **Data-efficiency.** Across label budgets of 10/25/100%, SSL-TUH fine-tuning tracks from-scratch training at every point; only same-domain OpenNeuro pretraining shows a small edge at 10% labels (Fig. 4). SSL does not reduce the label requirement (the supervised model reaches near-full cross-site AUC by ~25% of labels).
+- **Data-efficiency.** Across label budgets of 10/25/100% and three seeds, SSL-TUH fine-tuning tracks from-scratch training at every point (AUC 0.61 ± 0.06 vs 0.62 ± 0.07 at 10%, 0.69 ± 0.02 vs 0.70 ± 0.02 at 25%, 0.73 ± 0.01 vs 0.76 ± 0.03 at 100%; bands overlap, scratch nominally ahead) (Fig. 4). SSL does not reduce the label requirement: the supervised model reaches ~0.70 AUC by 25% of labels, and SSL initialization does not lower that.
 - **Augmentation.** Training-time augmentation gives no cross-site lift (AUC 0.763 vs 0.764).
 
 The negative is stable across seeds (SSL AUC standard deviations ≈ 0.002), so it is not seed noise.
@@ -68,4 +68,4 @@ Our results reframe what is known about cross-dataset PD-EEG. First, the widely 
 Cross-dataset PD-EEG accuracy, as conventionally reported, is largely a site artifact. Measured honestly with leave-one-dataset-out, threshold-independent metrics, and an explicit site-prior null, supervised detection transfers across sites at a real but modest level that is calibration-bound, and self-supervised pretraining does not improve it at the scales tested. We release the evaluation tooling to make these checks standard.
 
 ## Limitations
-Four datasets and three held-out sites; a single architecture; small subject counts per held-out site (31/50/149); SSL pretraining bounded by single-GPU scale (the disjoint TUH subset is ~20k segments, not the full corpus — a full-scale run would strengthen but is not expected to overturn the negative). Cross-site results use three seeds; the data-efficiency grid is being extended to multiple seeds.
+Four datasets and three held-out sites; a single architecture; small subject counts per held-out site (31/50/149); SSL pretraining bounded by single-GPU scale (the disjoint TUH subset is ~20k segments, not the full corpus — a full-scale run would strengthen but is not expected to overturn the negative). Cross-site and data-efficiency results use three seeds.
