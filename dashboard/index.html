@@ -27,6 +27,10 @@
   .badge{font-size:12.5px;font-weight:600;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel2)}
   .badge .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
   .b-amber .dot{background:var(--amber)} .b-green .dot{background:var(--green)} .b-blue .dot{background:var(--blue)}
+  .links{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .links a{font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--blue)}
+  .links a:hover{border-color:var(--blue)}
+  .links a .gh{color:var(--mut);font-weight:500}
   h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:38px 0 14px;font-weight:700}
   h2 .tip{font-size:11px;letter-spacing:.02em;text-transform:none;color:var(--violet);font-weight:600;margin-left:8px}
   .grid{display:grid;gap:16px}
@@ -89,6 +93,12 @@
       <span class="badge b-green"><span class="dot"></span>Experiments: complete (seeded)</span>
       <span class="badge b-blue"><span class="dot"></span>Paper: outline + related-works seeded</span>
       <span class="badge b-amber"><span class="dot"></span>AWS GPU quota: pending</span>
+    </div>
+    <div class="links">
+      <a href="https://github.com/edward-lcl/sjji-eeg" target="_blank" rel="noopener">GitHub repo ↗</a>
+      <a href="https://github.com/edward-lcl/sjji-eeg/blob/lodo-calibration/docs/related_works.md" target="_blank" rel="noopener">Related-works scaffold <span class="gh">· GitHub ↗</span></a>
+      <a href="https://github.com/edward-lcl/sjji-eeg/blob/lodo-calibration/paper/OUTLINE.md" target="_blank" rel="noopener">Paper outline <span class="gh">· GitHub ↗</span></a>
+      <a href="https://docs.google.com/document/d/18ld8zbX2_L9XANK_K4jzyGlLFOw_s7qPeRrFawraQZM/edit?tab=t.0" target="_blank" rel="noopener">Weekly check-in doc ↗</a>
     </div>
   </header>
 
@@ -223,7 +233,7 @@
           <tr><td class="who">Edward + Claude</td><td>Claims · Methods (null / calibration / LODO) · Results · Discussion</td></tr>
         </tbody>
       </table>
-      <div class="note">Starter scaffold in <code>docs/related_works.md</code> (papers + dataset table pre-seeded); outline in <code>paper/OUTLINE.md</code>. Weekly check-in: Wednesdays.</div>
+      <div class="note">Starter scaffold: <a href="https://github.com/edward-lcl/sjji-eeg/blob/lodo-calibration/docs/related_works.md" target="_blank" rel="noopener">docs/related_works.md</a> (papers + dataset table pre-seeded) · outline: <a href="https://github.com/edward-lcl/sjji-eeg/blob/lodo-calibration/paper/OUTLINE.md" target="_blank" rel="noopener">paper/OUTLINE.md</a> · <a href="https://docs.google.com/document/d/18ld8zbX2_L9XANK_K4jzyGlLFOw_s7qPeRrFawraQZM/edit?tab=t.0" target="_blank" rel="noopener">weekly check-in doc</a>. Meeting: Wednesdays.</div>
     </div>
   </div>
 
