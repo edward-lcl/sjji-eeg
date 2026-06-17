@@ -2,9 +2,11 @@
 % SJJI — MICCAI 2026 AMAI workshop submission (Springer LNCS, 8 pages)
 % Target: https://sites.google.com/view/amai2026/home  ·  Deadline: June 25, 2026
 %
-% INFRA IS DONE. You do not need to set up LaTeX.
-%   - Overleaf: New Project -> Upload, drop this file + the paper/figures/*.png,
-%     set the compiler to pdfLaTeX. The llncs class is built into Overleaf.
+% This file is our drafted CONTENT. Get the official Springer LNCS template + the
+% submission rules from paper/README.md (it links the AMAI CFP and the shared Overleaf).
+% KEY RULES: 8 pages + up to 2 ref pages · DOUBLE-BLIND (no author names/affiliations,
+%   no public-repo link in the PDF) · include the bold "Prospects of Application"
+%   paragraph (<= 60 words) at the end of the last section (drafted below).
 %   - Sections marked  % >>> TASK: ...  are open pieces — see HANDOFF_SAANVI.md / HANDOFF_ALEX.md.
 %   - Our sections (Methods/Results/Discussion/etc.) are drafted — edit for polish only.
 % Citations: add entries to refs.bib and cite with \cite{key}.  VERIFY every reference.
@@ -19,9 +21,10 @@
 \begin{document}
 
 \title{Site Confounds, Calibration, and the Limits of Self-Supervision in Cross-Dataset Parkinson's EEG Detection}
-% >>> TASK (Edward): finalize author list + affiliations before submission.
+% DOUBLE-BLIND: keep authors/affiliation anonymized in the SUBMITTED pdf.
+% >>> TASK (Edward): real author list + affiliations for the camera-ready only.
 \author{Anonymous for review}
-\institute{Affiliation}
+\institute{Affiliation withheld for double-blind review}
 \maketitle
 
 \begin{abstract}
@@ -113,6 +116,8 @@ Our results reframe cross-dataset PD-EEG. First, the widely reported pooled accu
 
 \section{Conclusion}
 Cross-dataset PD-EEG accuracy, as conventionally reported, is largely a site artifact. Measured honestly with leave-one-dataset-out, threshold-independent metrics, and an explicit site-prior null, supervised detection transfers across sites at a real but modest, calibration-bound level, and self-supervised pretraining does not improve it at the scales tested.
+
+\noindent\textbf{Prospects of Application.} As a screening aid, EEG-based Parkinson's detection must work at clinics unseen during training. Our results show this is feasible at modest, calibration-dependent accuracy: a model trained on existing datasets transfers (AUC $\approx 0.76$) and, with a site-aware decision threshold, reaches deployable balanced accuracy $\approx 0.64$, whereas conventionally reported pooled accuracies overstate clinical readiness.
 
 \subsubsection*{Limitations.}
 Four datasets and three held-out sites; a single architecture; small subject counts per held-out site (31/50/149); SSL pretraining bounded by single-GPU scale (the disjoint TUH subset is $\sim$20k segments). Cross-site and data-efficiency results use three seeds.
