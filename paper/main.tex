@@ -52,12 +52,21 @@ We make three contributions. \textbf{(1)} We introduce a \emph{site-prior null} 
 %     are in docs/related_works.md. Write ~1 short paragraph per theme below.
 %     CITE the two starred competitor papers and state how we go further
 %     (site-prior null / calibration reframe / SSL-negative). VERIFY every citation.
-\textbf{[RELATED WORK — Saanvi \& Alex. See docs/related\_works.md.]}
+% STATUS: Track B (SSL + calibration) is drafted below, cites verified in refs.bib.
+% Track A (Saanvi) is still to do: add the two subsections below and cite the two
+% 2026 competitor papers listed in docs/related_works.md.
+\textbf{[RELATED WORK: Track A (Saanvi) still to be written. Track B drafted below.]}
 
-% \subsection{EEG-based Parkinson's detection.}        % Saanvi
-% \subsection{Evaluation pitfalls and site effects in EEG-DL.}  % Saanvi
-% \subsection{Self-supervised learning for EEG.}       % Alex
-% \subsection{Calibration under domain shift.}         % Alex
+% \subsection{EEG-based Parkinson's detection.}        % Saanvi -- TODO
+% \subsection{Evaluation pitfalls and site effects in EEG-DL.}  % Saanvi -- TODO
+
+\subsection{Self-supervised learning for EEG.}
+Self-supervised pretraining has produced several EEG ``foundation models'' that learn from large unlabeled corpora and then transfer to downstream tasks. BENDR adapts a wav2vec-style contrastive objective to large EEG collections~\cite{bendr2021}, and BIOT tokenizes heterogeneous biosignals so that datasets with mismatched channels can be trained together~\cite{biot2023}. More recent models such as LaBraM~\cite{labram2024}, EEGPT~\cite{eegpt2024}, and CBraMod~\cite{cbramod2025} scale masked pretraining to thousands of hours and report strong results across many benchmarks, and a recent survey treats self-supervision as the main answer to EEG's shortage of labels~\cite{weng2024sslsurvey}. On clinical EEG, Banville et al.~\cite{banville2021} find that self-supervised features help most when labels are scarce, which is the regime our data-efficiency experiment targets. Our own pretraining follows this line, using VICReg~\cite{vicreg2022} through the SelfEEG library~\cite{selfeeg2024}.
+
+The closest prior work is MCLPD, which applies multi-view contrastive pretraining to cross-dataset Parkinson's EEG and reports that self-supervision improves leave-one-dataset-out transfer~\cite{mclpd2025}. We read that claim with some caution, because several recent evaluations report that EEG foundation models add little over compact supervised baselines~\cite{lee2025lbm}, and that on standardized benchmarks models trained from scratch stay competitive while larger models do not transfer any better~\cite{liu2026eegfm}. The pattern is not specific to EEG. With careful model selection, plain empirical risk minimization matches specialized domain-generalization methods~\cite{gulrajani2021}, and pretraining tends to correct poor extrapolation without removing dataset-specific biases or spurious correlations~\cite{cohenwang2024}. That last point matters here, since self-supervision has also been reported to improve robustness under shift~\cite{hendrycks2019ssl}, which is part of why we expected it to help. None of these studies measure whether self-supervision improves cross-site transfer under a strict leave-one-dataset-out clinical protocol. We run that test and find no benefit at the scale available to us, including when pretraining on a large clinical corpus that shares no recordings with the evaluation data.
+
+\subsection{Calibration under domain shift.}
+Modern neural networks are frequently overconfident, and simple post-hoc methods such as temperature scaling~\cite{guo2017calibration} or isotonic regression~\cite{zadrozny2002} usually correct this at low cost. The problem is harder once the test distribution differs from training. Ovadia et al.~\cite{ovadia2019} show that accuracy and calibration both degrade under shift, and that a calibrator fit in-distribution does not carry over to shifted data. Two results are closer to what we need. Yu et al.~\cite{yu2022multidomain} fit temperature scaling across several training domains to obtain a calibrator that holds up under shift, which is essentially our situation with several training hospitals. Wald et al.~\cite{wald2021} connect calibration across domains to out-of-domain generalization and use a robust form of isotonic regression for post-processing. Prevalence shift is a related concern in clinical use: when the positive rate at the deployment site differs from training, the best decision threshold moves and fixed-threshold scores become misleading. Godau et al.~\cite{godau2023} restore reasonable decisions by setting the operating point from the deployment prevalence without using target labels, which is what our prevalence-matched and train-transferred thresholds do. We take the same view for cross-site Parkinson's EEG. The apparent leave-one-site-out failure is mostly a thresholding problem, and a threshold or recalibration fit only on the training sites, never touching the held-out labels, recovers most of the balanced accuracy that is actually achievable.
 
 % ============================================================================
 \section{Methods}

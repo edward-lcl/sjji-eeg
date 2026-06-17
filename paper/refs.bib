@@ -1,0 +1,188 @@
+% refs.bib for the SJJI EEG Parkinson's cross-site paper (MICCAI AMAI 2026).
+% Track B (Alex): self-supervised learning for EEG, and calibration under shift.
+% Each entry was checked against arXiv, the official proceedings, or the publisher
+% in June 2026 (authors, venue, year, and identifier confirmed on the abstract page).
+% Track A entries (TransformEEG, the dataset papers, ComBat, the two 2026 competitor
+% papers, and the EEG data-leakage / site-shortcut papers) belong to Saanvi; she will
+% add those with their own keys.
+
+%% Self-supervised and foundation models for EEG (the narrative we test)
+
+@inproceedings{labram2024,
+  title     = {Large Brain Model for Learning Generic Representations with Tremendous {EEG} Data in {BCI}},
+  author    = {Jiang, Wei-Bang and Zhao, Li-Ming and Lu, Bao-Liang},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2024},
+  note      = {Spotlight. arXiv:2405.18765}
+}
+
+@inproceedings{eegpt2024,
+  title     = {{EEGPT}: Pretrained Transformer for Universal and Reliable Representation of {EEG} Signals},
+  author    = {Wang, Guangyu and Liu, Wenchao and He, Yuhong and Xu, Cong and Ma, Lin and Li, Haifeng},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2024}
+}
+
+@inproceedings{biot2023,
+  title     = {{BIOT}: Biosignal Transformer for Cross-data Learning in the Wild},
+  author    = {Yang, Chaoqi and Westover, M. Brandon and Sun, Jimeng},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2023},
+  note      = {arXiv:2305.10351}
+}
+
+@article{bendr2021,
+  title   = {{BENDR}: Using Transformers and a Contrastive Self-Supervised Learning Task to Learn From Massive Amounts of {EEG} Data},
+  author  = {Kostas, Demetres and Aroca-Ouellette, St{\'e}phane and Rudzicz, Frank},
+  journal = {Frontiers in Human Neuroscience},
+  volume  = {15},
+  pages   = {653659},
+  year    = {2021},
+  doi     = {10.3389/fnhum.2021.653659}
+}
+
+@inproceedings{cbramod2025,
+  title     = {{CBraMod}: A Criss-Cross Brain Foundation Model for {EEG} Decoding},
+  author    = {Wang, Jiquan and Zhao, Sha and Luo, Zhiling and Zhou, Yangxuan and Jiang, Haiteng and Li, Shijian and Li, Tao and Pan, Gang},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2025},
+  note      = {arXiv:2412.07236}
+}
+
+@article{banville2021,
+  title   = {Uncovering the structure of clinical {EEG} signals with self-supervised learning},
+  author  = {Banville, Hubert and Chehab, Omar and Hyv{\"a}rinen, Aapo and Engemann, Denis-Alexander and Gramfort, Alexandre},
+  journal = {Journal of Neural Engineering},
+  volume  = {18},
+  number  = {4},
+  pages   = {046020},
+  year    = {2021},
+  doi     = {10.1088/1741-2552/abca18}
+}
+
+@article{weng2024sslsurvey,
+  title   = {Self-supervised Learning for Electroencephalogram: A Systematic Survey},
+  author  = {Weng, Weining and Gu, Yang and Guo, Shuai and Ma, Yuan and Yang, Zhaohua and Liu, Yuchen and Chen, Yiqiang},
+  journal = {arXiv preprint arXiv:2401.05446},
+  year    = {2024}
+}
+
+@article{selfeeg2024,
+  title   = {{SelfEEG}: A Python library for Self-Supervised Learning in Electroencephalography},
+  author  = {Del Pup, Federico and Zanola, Andrea and Tshimanga, Louis Fabrice and Mazzon, Paolo Emilio and Atzori, Manfredo},
+  journal = {Journal of Open Source Software},
+  volume  = {9},
+  number  = {95},
+  pages   = {6224},
+  year    = {2024},
+  doi     = {10.21105/joss.06224}
+}
+
+@inproceedings{vicreg2022,
+  title     = {{VICReg}: Variance-Invariance-Covariance Regularization for Self-Supervised Learning},
+  author    = {Bardes, Adrien and Ponce, Jean and LeCun, Yann},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2022},
+  note      = {arXiv:2105.04906}
+}
+
+% Closest prior work: contrastive SSL for cross-dataset PD-EEG (reports SSL helps; our counterpoint)
+@inproceedings{mclpd2025,
+  title     = {{MCLPD}: Multi-view Contrastive Learning for {EEG}-based {PD} Detection Across Datasets},
+  author    = {Zhang, Qian and Zhang, Ruilin and Xiao, Jun and Liu, Yifan and Wang, Zhe},
+  booktitle = {European Conference on Artificial Intelligence (ECAI)},
+  year      = {2025},
+  note      = {arXiv:2508.14073}
+}
+
+%% Critical evaluations of EEG foundation models, and SSL / domain-generalization
+%% reality checks (these contextualize our negative result)
+
+@inproceedings{lee2025lbm,
+  title     = {Are Large Brainwave Foundation Models Capable Yet? Insights from Fine-tuning},
+  author    = {Lee, Na and Barmpas, Konstantinos and Panagakis, Yannis and Adamos, Dimitrios A. and Laskaris, Nikolaos and Zafeiriou, Stefanos},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2025},
+  note      = {arXiv:2507.01196}
+}
+
+@article{liu2026eegfm,
+  title   = {{EEG} Foundation Models: Progresses, Benchmarking, and Open Problems},
+  author  = {Liu, Dingkun and Chen, Yuheng and Chen, Zhu and Cui, Zhenyao and Wen, Yaozhi and An, Jiayu and Luo, Jingwei and Wu, Dongrui},
+  journal = {arXiv preprint arXiv:2601.17883},
+  year    = {2026}
+}
+
+@inproceedings{gulrajani2021,
+  title     = {In Search of Lost Domain Generalization},
+  author    = {Gulrajani, Ishaan and Lopez-Paz, David},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2021},
+  note      = {arXiv:2007.01434}
+}
+
+@article{cohenwang2024,
+  title   = {Ask Your Distribution Shift if Pre-Training is Right for You},
+  author  = {Cohen-Wang, Benjamin and Vendrow, Joshua and Madry, Aleksander},
+  journal = {arXiv preprint arXiv:2403.00194},
+  year    = {2024}
+}
+
+@inproceedings{hendrycks2019ssl,
+  title     = {Using Self-Supervised Learning Can Improve Model Robustness and Uncertainty},
+  author    = {Hendrycks, Dan and Mazeika, Mantas and Kadavath, Saurav and Song, Dawn},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2019},
+  note      = {arXiv:1906.12340}
+}
+
+%% Calibration, thresholds, and generalization under domain, dataset, or prevalence shift
+
+@inproceedings{guo2017calibration,
+  title     = {On Calibration of Modern Neural Networks},
+  author    = {Guo, Chuan and Pleiss, Geoff and Sun, Yu and Weinberger, Kilian Q.},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2017},
+  note      = {arXiv:1706.04599}
+}
+
+@inproceedings{zadrozny2002,
+  title     = {Transforming Classifier Scores into Accurate Multiclass Probability Estimates},
+  author    = {Zadrozny, Bianca and Elkan, Charles},
+  booktitle = {ACM SIGKDD International Conference on Knowledge Discovery and Data Mining (KDD)},
+  pages     = {694--699},
+  year      = {2002},
+  doi       = {10.1145/775047.775151}
+}
+
+@inproceedings{ovadia2019,
+  title     = {Can You Trust Your Model's Uncertainty? Evaluating Predictive Uncertainty Under Dataset Shift},
+  author    = {Ovadia, Yaniv and Fertig, Emily and Ren, Jie and Nado, Zachary and Sculley, D. and Nowozin, Sebastian and Dillon, Joshua V. and Lakshminarayanan, Balaji and Snoek, Jasper},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2019},
+  note      = {arXiv:1906.02530}
+}
+
+@inproceedings{yu2022multidomain,
+  title     = {Robust Calibration with Multi-domain Temperature Scaling},
+  author    = {Yu, Yaodong and Bates, Stephen and Ma, Yi and Jordan, Michael I.},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2022},
+  note      = {arXiv:2206.02757}
+}
+
+@inproceedings{wald2021,
+  title     = {On Calibration and Out-of-Domain Generalization},
+  author    = {Wald, Yoav and Feder, Amir and Greenfeld, Daniel and Shalit, Uri},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2021},
+  note      = {arXiv:2102.10395}
+}
+
+@inproceedings{godau2023,
+  title     = {Deployment of Image Analysis Algorithms under Prevalence Shifts},
+  author    = {Godau, Patrick and Kalinowski, Piotr and Christodoulou, Evangelia and Reinke, Annika and Tizabi, Minu and Ferrer, Luciana and J{\"a}ger, Paul F. and Maier-Hein, Lena},
+  booktitle = {Medical Image Computing and Computer Assisted Intervention (MICCAI)},
+  year      = {2023},
+  note      = {arXiv:2303.12540}
+}
