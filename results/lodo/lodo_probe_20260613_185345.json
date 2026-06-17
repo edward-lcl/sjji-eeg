@@ -1,0 +1,107 @@
+{
+  "mode": "probe",
+  "encoder_path": "results/ssl/pretrained_encoder_19ch_opennero.pt",
+  "site_prior_null": {
+    "segment_balanced_accuracy": 0.926605504587156,
+    "subject_balanced_accuracy": 0.6538461538461539,
+    "per_dataset_majority": {
+      "ds002778": "PD",
+      "ds003490": "PD",
+      "ds004148": "HC",
+      "ds004584": "PD"
+    },
+    "n_segments": 18721,
+    "n_subjects": 270
+  },
+  "per_heldout": {
+    "ds002778": {
+      "segment": {
+        "balanced_accuracy": 0.5619048848941922,
+        "sensitivity": 0.6464435146443515,
+        "specificity": 0.4773662551440329,
+        "n_segments": 721,
+        "roc_auc": 0.5630025655595158
+      },
+      "subject": {
+        "balanced_accuracy": 0.51875,
+        "sensitivity": 0.6,
+        "specificity": 0.4375,
+        "n_subjects": 31,
+        "n_pd": 15,
+        "n_hc": 16,
+        "roc_auc": 0.5875
+      }
+    },
+    "ds003490": {
+      "segment": {
+        "balanced_accuracy": 0.4962787503104509,
+        "sensitivity": 0.9901263823064771,
+        "specificity": 0.0024311183144246355,
+        "n_segments": 3766,
+        "roc_auc": 0.5808778910336669
+      },
+      "subject": {
+        "balanced_accuracy": 0.5,
+        "sensitivity": 1.0,
+        "specificity": 0.0,
+        "n_subjects": 50,
+        "n_pd": 25,
+        "n_hc": 25,
+        "roc_auc": 0.6
+      }
+    },
+    "ds004584": {
+      "segment": {
+        "balanced_accuracy": 0.5189228585094026,
+        "sensitivity": 0.9917627677100495,
+        "specificity": 0.04608294930875576,
+        "n_segments": 1865,
+        "roc_auc": 0.5600305701278226
+      },
+      "subject": {
+        "balanced_accuracy": 0.5154081632653061,
+        "sensitivity": 0.99,
+        "specificity": 0.04081632653061224,
+        "n_subjects": 149,
+        "n_pd": 100,
+        "n_hc": 49,
+        "roc_auc": 0.5548979591836735
+      }
+    }
+  },
+  "macro": {
+    "segment": {
+      "mean": 0.5257021645713486,
+      "median": 0.5189228585094026,
+      "std": 0.027217232630718676,
+      "iqr": 0.03281306729187072,
+      "q25": 0.5076008044099267,
+      "q75": 0.5404138717017974,
+      "p01": 0.4967316324744299,
+      "p99": 0.5610452443664964,
+      "n_folds": 3
+    },
+    "subject": {
+      "mean": 0.5113860544217688,
+      "median": 0.5154081632653061,
+      "std": 0.008165931041505998,
+      "iqr": 0.009375000000000133,
+      "q25": 0.507704081632653,
+      "q75": 0.5170790816326531,
+      "p01": 0.5003081632653061,
+      "p99": 0.5186831632653062,
+      "n_folds": 3
+    }
+  },
+  "config": {
+    "n_channels": 19,
+    "heldout_ids": [
+      "ds002778",
+      "ds003490",
+      "ds004584"
+    ],
+    "sup_epochs": 50,
+    "probe_epochs": 30,
+    "data_dir": "data/processed_unified"
+  }
+}

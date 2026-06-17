@@ -1,0 +1,141 @@
+{
+  "mode": "supervised",
+  "encoder_path": null,
+  "site_prior_null": {
+    "segment_balanced_accuracy": 0.926605504587156,
+    "subject_balanced_accuracy": 0.6538461538461539,
+    "per_dataset_majority": {
+      "ds002778": "PD",
+      "ds003490": "PD",
+      "ds004148": "HC",
+      "ds004584": "PD"
+    },
+    "n_segments": 18721,
+    "n_subjects": 270
+  },
+  "per_heldout": {
+    "ds002778": {
+      "segment": {
+        "balanced_accuracy": 0.6532103930988171,
+        "sensitivity": 0.6150627615062761,
+        "specificity": 0.691358024691358,
+        "n_segments": 721,
+        "roc_auc": 0.6944057027739036
+      },
+      "subject": {
+        "balanced_accuracy": 0.675,
+        "sensitivity": 0.6,
+        "specificity": 0.75,
+        "n_subjects": 31,
+        "n_pd": 15,
+        "n_hc": 16,
+        "roc_auc": 0.7416666666666667
+      },
+      "calibration": {
+        "n_subjects": 31,
+        "fixed_0.5": 0.675,
+        "prevalence_matched": 0.6770833333333333,
+        "roc_auc": 0.7416666666666667,
+        "oracle_youden": 0.7166666666666667,
+        "train_transferred": 0.5354166666666667,
+        "train_threshold": 0.8448345065116882
+      }
+    },
+    "ds003490": {
+      "segment": {
+        "balanced_accuracy": 0.5065137072057886,
+        "sensitivity": 0.9976303317535545,
+        "specificity": 0.01539708265802269,
+        "n_segments": 3766,
+        "roc_auc": 0.7436960871669215
+      },
+      "subject": {
+        "balanced_accuracy": 0.5,
+        "sensitivity": 1.0,
+        "specificity": 0.0,
+        "n_subjects": 50,
+        "n_pd": 25,
+        "n_hc": 25,
+        "roc_auc": 0.8448
+      },
+      "calibration": {
+        "n_subjects": 50,
+        "fixed_0.5": 0.5,
+        "prevalence_matched": 0.76,
+        "roc_auc": 0.8448,
+        "oracle_youden": 0.78,
+        "train_transferred": 0.76,
+        "train_threshold": 0.8833355056612116
+      }
+    },
+    "ds004584": {
+      "segment": {
+        "balanced_accuracy": 0.5342167796597301,
+        "sensitivity": 0.9670510708401977,
+        "specificity": 0.10138248847926268,
+        "n_segments": 1865,
+        "roc_auc": 0.759606308378695
+      },
+      "subject": {
+        "balanced_accuracy": 0.5308163265306123,
+        "sensitivity": 0.98,
+        "specificity": 0.08163265306122448,
+        "n_subjects": 149,
+        "n_pd": 100,
+        "n_hc": 49,
+        "roc_auc": 0.7522448979591836
+      },
+      "calibration": {
+        "n_subjects": 149,
+        "fixed_0.5": 0.5308163265306123,
+        "prevalence_matched": 0.6807142857142857,
+        "roc_auc": 0.7522448979591836,
+        "oracle_youden": 0.7123469387755101,
+        "train_transferred": 0.6648979591836734,
+        "train_threshold": 0.9139757017756618
+      }
+    }
+  },
+  "macro": {
+    "segment": {
+      "mean": 0.564646959988112,
+      "median": 0.5342167796597301,
+      "std": 0.06363686729725596,
+      "iqr": 0.07334834294651427,
+      "q25": 0.5203652434327594,
+      "q75": 0.5937135863792736,
+      "p01": 0.5070677686548675,
+      "p99": 0.6508305208300353,
+      "n_folds": 3
+    },
+    "subject": {
+      "mean": 0.5686054421768708,
+      "median": 0.5308163265306123,
+      "std": 0.07627696439508995,
+      "iqr": 0.08750000000000002,
+      "q25": 0.5154081632653061,
+      "q75": 0.6029081632653062,
+      "p01": 0.5006163265306123,
+      "p99": 0.6721163265306123,
+      "n_folds": 3
+    },
+    "calibration": {
+      "fixed_0.5": 0.5686054421768708,
+      "train_transferred": 0.65343820861678,
+      "prevalence_matched": 0.7059325396825397,
+      "oracle_youden": 0.7363378684807257,
+      "roc_auc": 0.7795705215419501
+    }
+  },
+  "config": {
+    "n_channels": 19,
+    "heldout_ids": [
+      "ds002778",
+      "ds003490",
+      "ds004584"
+    ],
+    "sup_epochs": 50,
+    "probe_epochs": 30,
+    "data_dir": "data/processed_unified"
+  }
+}

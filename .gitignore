@@ -1,5 +1,9 @@
 data/
-results/
+# Track LODO / honest-eval metric JSONs only (paper numbers); keep everything else under results/ out
+results/*
+!results/lodo/
+results/lodo/*
+!results/lodo/*.json
 runs/
 logs/
 venv/
