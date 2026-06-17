@@ -220,7 +220,7 @@
   <div class="card" style="margin-bottom:16px;border-left:3px solid var(--amber);background:rgba(255,180,84,.06)">
     <h3>🎯 Target venue: <a href="https://sites.google.com/view/amai2026/home" target="_blank" rel="noopener">MICCAI <b>AMAI 2026</b> workshop ↗</a> · Springer LNCS · 8 pages</h3>
     <div class="ct"><b>Deadline: June 25, 2026, 11:59pm PT</b> (~9 days). AMAI is modality-agnostic (EEG welcome) and its themes are literally "evaluation &amp; validation in real-world settings" and "trust" — a tailor-made fit for our honest-evaluation story. The draft is ~80% done; this week is <b>Related Work + figures + assembly</b>, agent-assisted. <a href="https://sites.google.com/view/amai2026/home" target="_blank" rel="noopener">CFP ↗</a><br>
-    <b style="color:var(--ink)">Set up for you (no LaTeX setup needed):</b> <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/paper/main.tex" target="_blank" rel="noopener">main.tex</a> (LNCS submission file, our sections written, figures wired) · <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/paper/TASKS.md" target="_blank" rel="noopener"><b>📋 pick up a task →</b></a></div>
+    <b style="color:var(--ink)">LaTeX is set up:</b> <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/paper/main.tex" target="_blank" rel="noopener">main.tex</a> (LNCS submission file, our sections written, figures wired) · runbooks: <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/HANDOFF_SAANVI.md" target="_blank" rel="noopener"><b>HANDOFF_SAANVI →</b></a> · <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/HANDOFF_ALEX.md" target="_blank" rel="noopener"><b>HANDOFF_ALEX →</b></a></div>
   </div>
 
   <div class="card" style="margin-bottom:16px;border-left:3px solid var(--green)">
@@ -231,23 +231,13 @@
 
   <div class="grid g2">
     <div class="card lead" style="--accent:var(--blue)">
-      <h3>Saanvi — Related Work (EEG &amp; PD) + Datasets</h3>
-      <ol class="steps">
-        <li><b>Read</b> the Track-A papers in the scaffold: TransformEEG, the preprocessing/leakage papers, ComBat, and the 4 dataset papers.</li>
-        <li><b>Fill the table</b> — one row each: <i>method · datasets · key result · relevance to us</i>.</li>
-        <li><b>Write</b> ~2 short paragraphs: how the field evaluates PD-EEG, and why pooled accuracy can mislead (this sets up Finding 1).</li>
-        <li><b>Verify</b> the dataset table (montage, #subjects, quirks) — the numbers are pre-filled in the scaffold.</li>
-      </ol>
+      <h3>Saanvi — site-ID experiment + Related Work</h3>
+      <div class="ct"><b>Thread 1 (experiment):</b> can a model tell which hospital a recording is from? Train a 4-way dataset classifier on the EEG alone — a near-perfect score is the proof behind Finding 1. Runs on your M4 Air. <b>Thread 2:</b> Related Work — EEG evaluation / site effects + PD. Full runbook (paths, sanity checks, what to report) → <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/HANDOFF_SAANVI.md" target="_blank" rel="noopener"><b>HANDOFF_SAANVI.md</b></a>.</div>
       <div class="note brainy">🧠 <b>Make it yours:</b> for each paper, decide — does it <i>support</i> or <i>challenge</i> our findings? A paper that contradicts us is the most valuable kind — flag it. What's the <i>one sentence</i> that says why our work is different? <b>Heads-up:</b> two 2026 papers are the closest prior work (cross-population PD-EEG evaluation) — cite them and sharpen how we differ (our no-EEG <i>site-prior null</i>, the <i>calibration</i> reframe, the <i>SSL-negative</i>). They're pre-added to <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/docs/related_works.md" target="_blank" rel="noopener">related_works.md</a>.</div>
     </div>
     <div class="card lead" style="--accent:var(--violet)">
-      <h3>Alex — Related Work (SSL &amp; calibration) + Figures</h3>
-      <ol class="steps">
-        <li><b>Read</b> the Track-B papers: LaBraM, BIOT, BENDR, SelfEEG, and Guo et al. (calibration).</li>
-        <li><b>Fill the table</b> — same format — noting whether anyone shows SSL <i>helping</i> cross-site (relevant to our negative).</li>
-        <li><b>Make the figures</b>: run <code>python experiments/make_figures.py</code> → it draws Figs 1–4 from the data; then style them (labels, fonts, colors).</li>
-        <li><b>Write</b> ~2 short paragraphs on SSL-for-EEG and calibration-under-shift.</li>
-      </ol>
+      <h3>Alex — calibration experiment + Related Work + figures</h3>
+      <div class="ct"><b>Thread 1 (experiment):</b> does a smarter calibration (temperature scaling / isotonic, fit on the training sites) beat our deployable 0.64, toward the 0.73 ceiling? Raw scores are already saved — no re-running models. <b>Thread 2:</b> Related Work — SSL + calibration. <b>Thread 3:</b> the figures. Full runbook → <a href="https://github.com/edward-lcl/sjji-eeg/blob/main/HANDOFF_ALEX.md" target="_blank" rel="noopener"><b>HANDOFF_ALEX.md</b></a>.</div>
       <div class="note brainy">🧠 <b>Make it yours:</b> a good figure makes its point in 3 seconds — after each one, ask someone "what's the takeaway?" If they can't say it instantly, fix it. And: why do <i>you</i> think SSL didn't help here?</div>
     </div>
   </div>

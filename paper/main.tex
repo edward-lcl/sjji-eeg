@@ -5,7 +5,7 @@
 % INFRA IS DONE. You do not need to set up LaTeX.
 %   - Overleaf: New Project -> Upload, drop this file + the paper/figures/*.png,
 %     set the compiler to pdfLaTeX. The llncs class is built into Overleaf.
-%   - Sections marked  % >>> TASK: ...  are the pickup-able pieces (see paper/TASKS.md).
+%   - Sections marked  % >>> TASK: ...  are open pieces — see HANDOFF_SAANVI.md / HANDOFF_ALEX.md.
 %   - Our sections (Methods/Results/Discussion/etc.) are drafted — edit for polish only.
 % Citations: add entries to refs.bib and cite with \cite{key}.  VERIFY every reference.
 % ============================================================================
@@ -34,7 +34,7 @@ Electroencephalography (EEG) is a low-cost, non-invasive candidate biomarker for
 % >>> TASK (Saanvi or Alex): write the opening hook paragraph here — clinical
 %     motivation: PD prevalence, late diagnosis from motor symptoms, EEG as an
 %     accessible biomarker, and why a model must work across hospitals to matter.
-%     ~4--6 sentences. See paper/TASKS.md "Intro hook".
+%     ~4--6 sentences. See HANDOFF_SAANVI.md / HANDOFF_ALEX.md.
 \textbf{[HOOK PARAGRAPH — Saanvi/Alex]}
 
 Deep-learning models for EEG-based PD detection are commonly evaluated by pooling several public datasets and performing subject-level cross-validation, reporting balanced accuracies near 80--90\%. This protocol holds out subjects but not \emph{sites}: every dataset appears in both training and test folds. Because EEG recordings are trivially identifiable by site (amplifier, montage, filtering) and because each dataset carries a dataset-specific label distribution, a model can achieve high pooled accuracy by recognizing the dataset rather than the disease. Whether such accuracy reflects pathology---and whether it transfers to a genuinely unseen site---has not been directly tested.
