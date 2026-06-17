@@ -37,8 +37,11 @@ Report: balanced accuracy (+ a confusion matrix is nice — which datasets are m
 - Name the two competitor papers (arXiv:2604.23933, arXiv:2601.05276) and say in one sentence how we go further (site-prior null + calibration). **If either already does our site-null or calibration analysis, flag it — that changes our framing.**
 - **Verify every citation is a real paper.** Agents invent references.
 
+## Thread 3 — Introduction hook (¶1)
+The opening paragraph of `paper/main.tex` (replace the `[HOOK PARAGRAPH]` stub): 4–6 sentences on the clinical motivation — Parkinson's prevalence, late diagnosis from motor symptoms, EEG as a cheap/accessible biomarker, and why a model has to work across *hospitals* to be useful. Plain and motivating, no hype.
+
 ## Inputs
 `paper/main.tex` (your sections stubbed) · `docs/related_works.md` · `experiments/lodo_eval.py`, `src/honest_eval.py`, `src/model.py` · `results/lodo/*.json` · the dashboard for the full picture.
 
 ## Deliverable
-The site-ID number/figure + your two Related-Work paragraphs + refs. Quality over the Jun 25 date — if the experiment runs long, the writing ships first. Blockers → Wednesday check-in.
+The site-ID number/figure + your two Related-Work paragraphs + the intro hook + refs. Quality over the Jun 25 date — if the experiment runs long, the writing ships first. Blockers → Wednesday check-in.
