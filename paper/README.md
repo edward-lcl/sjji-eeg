@@ -4,7 +4,8 @@ Everything to write and submit to the **AMAI 2026 workshop** (MICCAI satellite e
 Repo: github.com/edward-lcl/sjji-eeg · Dashboard: sjji-eeg.exe.xyz · Deadline: **June 25, 2026**.
 
 ## Where we write
-- **Overleaf (shared, write here):** https://www.overleaf.com/1941824983nqkfqvxnggrq#1e17f6
+- **Overleaf (shared):** the link is in the private team check-in doc / ask Edward on Slack.
+  (Kept out of this public repo — an Overleaf share link grants edit access to anyone who has it.)
 - Our drafted content: `paper/main.tex` (LNCS skeleton, our sections written) and `paper/draft.md`
   (the prose). Figures: `paper/figures/` (regenerate with `experiments/make_figures.py`).
 
