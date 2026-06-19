@@ -44,18 +44,49 @@ cross-site PD" — our own data is the counterexample.
 
 > ⭐ **Novelty positioning (Saanvi — read this).** The field is actively working on cross-dataset PD-EEG and "fixing the evaluation." So our contribution is NOT "we noticed evaluation matters" — others have too. Our *distinct* contributions are: **(1)** the **site-prior null** (a no-EEG model scoring 0.93 quantifies the confound — most papers don't report this), **(2)** the **calibration reframe** (cross-site failure is a *threshold* problem, recoverable to ~0.64), and **(3)** a clean **SSL/augmentation negative**. In Related Work, name the two ⭐ papers explicitly and state in one sentence how we go further. If either already does one of our three things, flag it immediately — that changes our framing.
 
-## Track B — Self-supervised learning for EEG + calibration under domain shift  *(Student: ____)*
+## Track B: Self-supervised learning for EEG, and calibration under domain shift  *(Student: Alex)*
 
-| Paper (author, year, venue) | Method / idea | Datasets | Key result | Relevance to us |
+Status: done. Every paper below is checked against arXiv, the official proceedings, or the publisher (June 2026) and entered in `paper/refs.bib`; the cite key is in the last column. The write-up is the two Related Work subsections in `paper/main.tex`.
+
+**Self-supervised and foundation models for EEG**
+
+| Paper (name, authors, year, venue) | Method / idea | Key result | Relevance to us | cite key |
 |---|---|---|---|---|
-| Jiang et al., 2024 — **LaBraM** (ICLR) | large-scale EEG foundation model, masked prediction | many EEG corpora | SOTA on several EEG tasks | the "SSL at scale helps EEG" claim we're testing for PD cross-site |
-| Yang et al., 2023 — **BIOT** (NeurIPS) | biosignal transformer, cross-data tokenization | multiple biosignals | cross-dataset transfer | most relevant SSL cross-data precedent |
-| Kostas et al., 2021 — **BENDR** (Front. Hum. Neurosci.) | BERT-style contrastive SSL for EEG | TUH + downstream | transfers to small downstream sets | template for "pretrain on TUH, fine-tune on small task" — exactly our setup |
-| Del Pup et al., 2024 — **SelfEEG** `[VERIFY]` | SSL library for EEG (SimCLR/VICReg/etc.) | — | tooling, no PD-specific eval | the library our pretraining uses |
-| `[VERIFY]` **EEGPT** (2024) | EEG foundation model | many | general EEG | another "scale helps" data point |
-| Guo et al., 2017 — **On Calibration of Modern NNs** (ICML) | temperature scaling | vision | NNs are miscalibrated; temp scaling fixes it cheaply | underpins our calibration recovery; try temp-scaling on our cross-site scores |
-| `[ADD]` domain-shift / OOD calibration paper (find 1–2) | calibration degrades under shift | | | supports "fixed 0.5 threshold fails across sites" |
-| `[ADD]` 1 paper on whether SSL helps *domain generalization* (any modality) | | | | directly relevant to our negative result |
+| **LaBraM** (Jiang et al., 2024, ICLR spotlight; arXiv 2405.18765) | large EEG foundation model, vector-quantized masked prediction | pretrained on about 2,500 hours of EEG; strong across several downstream tasks | the "SSL at scale helps EEG" claim we test for PD cross-site | `labram2024` |
+| **EEGPT** (Wang et al., 2024, NeurIPS) | 10M-parameter masked self-supervised transformer with spatio-temporal alignment | strong linear-probe results across tasks | another data point for "scale helps" | `eegpt2024` |
+| **BIOT** (Yang et al., 2023, NeurIPS; arXiv 2305.10351) | biosignal transformer that tokenizes mismatched channels and lengths | learns across datasets and formats, beats baselines | the most relevant cross-data SSL precedent | `biot2023` |
+| **BENDR** (Kostas et al., 2021, Front. Hum. Neurosci. 15:653659; arXiv 2101.12037) | wav2vec/BERT-style contrastive SSL on large EEG | one model handles new hardware, subjects, and tasks; fine-tunes to small sets | matches the "pretrain on a big corpus, fine-tune on a small set" recipe we use | `bendr2021` |
+| **CBraMod** (Wang et al., 2025, ICLR 2025; arXiv 2412.07236) | criss-cross transformer EEG foundation model, masked reconstruction | strong results across 10 BCI tasks and 12 datasets | the newest foundation model, so the framing stays current | `cbramod2025` |
+| **Banville et al.** (2021, J. Neural Eng. 18:046020; arXiv 2007.16104) | temporal-context and contrastive-predictive-coding SSL on clinical EEG | SSL features beat supervised nets when labels are scarce, and match them at full labels | the exact claim our data-efficiency experiment tests | `banville2021` |
+| **SSL-for-EEG survey** (Weng et al., 2024, arXiv 2401.05446; ACM CSUR) | systematic survey of SSL for EEG | taxonomy; positions SSL as the fix for label scarcity | the source we cite for the pro-SSL view we test | `weng2024sslsurvey` |
+| **SelfEEG** (Del Pup et al., 2024, J. Open Source Software 9(95):6224) | SSL library for EEG (SimCLR, VICReg, and others) | tooling, with no PD-specific evaluation | the library our pretraining uses | `selfeeg2024` |
+| **VICReg** (Bardes, Ponce, LeCun, 2022, ICLR; arXiv 2105.04906) | variance-invariance-covariance SSL objective, no negative pairs | on par with other SSL methods, but simpler | the SSL objective our pretraining uses | `vicreg2022` |
+| **MCLPD** (Zhang et al., 2025, ECAI 2025; arXiv 2508.14073) | multi-view contrastive SSL for cross-dataset PD-EEG, evaluated leave-one-dataset-out | reports that SSL improves leave-one-dataset-out PD transfer | the closest prior work and our main counterpoint; we cite it and qualify it | `mclpd2025` |
+
+**Critical evaluations and domain-generalization reality checks**
+
+| Paper (name, authors, year, venue) | Method / idea | Key result | Relevance to us | cite key |
+|---|---|---|---|---|
+| **Are Large Brainwave Foundation Models Capable Yet?** (Lee et al., 2025, ICML 2025; arXiv 2507.01196) | fine-tuning study of recent EEG foundation models | about 1 percent gain over compact deep nets despite far more parameters | strong support for our negative, from a main-conference paper | `lee2025lbm` |
+| **EEG Foundation Models: Progresses, Benchmarking, Open Problems** (Liu et al., 2026, arXiv 2601.17883) | benchmark of 12 EEG foundation models across 13 datasets and 9 paradigms | models trained from scratch stay competitive, larger models do not generalize better, linear probing is weak | an independent benchmark that supports our negative, and very recent | `liu2026eegfm` |
+| **In Search of Lost Domain Generalization** (Gulrajani & Lopez-Paz, 2021, ICLR; arXiv 2007.01434) | DomainBed, a fair domain-generalization benchmark | well-tuned ERM matches or beats nine DG algorithms | the standard reference for "a careful baseline beats fancy methods" | `gulrajani2021` |
+| **Ask Your Distribution Shift if Pre-Training is Right for You** (Cohen-Wang et al., 2024, arXiv 2403.00194) | separates the cases where pretraining helps under shift | pretraining fixes poor extrapolation but does not remove dataset biases or spurious correlations | explains why our negative is expected: a site confound is a dataset bias pretraining cannot remove | `cohenwang2024` |
+| **Using SSL Can Improve Robustness and Uncertainty** (Hendrycks et al., 2019, NeurIPS; arXiv 1906.12340) | auxiliary self-supervision | SSL improves OOD detection and robustness in vision | part of why SSL was expected to help here | `hendrycks2019ssl` |
+
+**Calibration and thresholds under shift**
+
+| Paper (name, authors, year, venue) | Method / idea | Key result | Relevance to us | cite key |
+|---|---|---|---|---|
+| **On Calibration of Modern Neural Networks** (Guo et al., 2017, ICML; arXiv 1706.04599) | temperature scaling | modern networks are overconfident; temperature scaling corrects it cheaply | underpins our calibration recovery and Alex's Thread-1 temperature scaling | `guo2017calibration` |
+| **Isotonic calibration** (Zadrozny & Elkan, 2002, KDD; doi 10.1145/775047.775151) | isotonic regression for probability calibration | the standard origin of isotonic recalibration | the reference for Alex's Thread-1 isotonic arm | `zadrozny2002` |
+| **Can You Trust Your Model's Uncertainty?** (Ovadia et al., 2019, NeurIPS; arXiv 1906.02530) | benchmark of calibration under dataset shift | accuracy and calibration both degrade under shift; a calibrator fit in-distribution does not transfer | shows that a fixed 0.5 threshold fails across sites | `ovadia2019` |
+| **Robust Calibration with Multi-domain Temperature Scaling** (Yu et al., 2022, NeurIPS; arXiv 2206.02757) | fit temperature across several training domains | calibration that holds up on both in- and out-of-distribution data | backs fitting temperature on our training hospitals, and underpins Alex's Thread-1 | `yu2022multidomain` |
+| **On Calibration and Out-of-Domain Generalization** (Wald et al., 2021, NeurIPS; arXiv 2102.10395) | links multi-domain calibration to OOD generalization; robust isotonic regression | multi-domain calibration implies fewer spurious correlations | backs both our calibration reframe and Alex's Thread-1 isotonic arm | `wald2021` |
+| **Deployment under Prevalence Shifts** (Godau et al., 2023, MICCAI; arXiv 2303.12540) | prevalence-aware recalibration of the operating point, without target labels | restores good decisions and reliable metrics across 30 medical tasks | the clinical analogue of our prevalence-matched and train-transferred thresholds, in the same venue family | `godau2023` |
+
+> On the handoff's question of whether anyone shows SSL helping cross-site: only MCLPD (ECAI 2025) claims it for cross-dataset PD-EEG, and under a weaker protocol than ours, so we cite it and qualify it. The large EEG foundation-model papers (LaBraM, EEGPT, BIOT, BENDR, CBraMod) report transfer under pooled or in-distribution fine-tuning, or as downstream accuracy after very large pretraining; Banville's gains are in the low-label setting and Hendrycks is in vision. The 2025 and 2026 benchmarks (Lee, Liu) find these models barely beat compact supervised baselines, and that scale does not buy better generalization, and Cohen-Wang gives the reason: pretraining does not remove a dataset confound, which is what our site shortcut is. None of them test SSL under a strict leave-one-dataset-out clinical protocol at our scale, and that gap is what our negative fills (written up in `paper/main.tex`).
+
+> Boundary note for Saanvi (Track A): the search also turned up strong site-confound and leakage papers that fit your track rather than mine, so I left them for you to avoid double-citing. Brookshire et al. 2024 (Data leakage in translational EEG, Front. Neurosci., doi 10.3389/fnins.2024.1373515); Souza et al. 2023 (site acts as a shortcut in multisite PD MRI and survives harmonization, JAMIA, doi 10.1093/jamia/ocad171); and a ComBat-for-EEG study (Jaramillo-Jimenez et al. 2024, Clin. Neurophysiol.). They support the point that pooled accuracy is a confound.
 
 ---
 
