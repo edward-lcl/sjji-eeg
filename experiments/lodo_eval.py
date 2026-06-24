@@ -289,7 +289,8 @@ def run(mode, encoder_path=None):
           f"{null['subject_balanced_accuracy']:.3f} subj / {null['segment_balanced_accuracy']:.3f} seg")
 
     cal_macro = {}
-    for k in ["fixed_0.5", "train_transferred", "prevalence_matched", "oracle_youden", "roc_auc"]:
+    for k in ["fixed_0.5", "train_transferred", "temperature_scaled", "isotonic_regression",
+              "prevalence_matched", "oracle_youden", "roc_auc"]:
         vals = [folds[d]["calibration"].get(k) for d in folds if folds[d].get("calibration")]
         vals = [v for v in vals if v is not None]
         if vals:
@@ -298,6 +299,8 @@ def run(mode, encoder_path=None):
         print(f"\n    CALIBRATION (subject bal_acc, macro across held-out sites):")
         print(f"      fixed 0.5         = {cal_macro.get('fixed_0.5', float('nan')):.3f}  (the collapse)")
         print(f"      train-transferred = {cal_macro.get('train_transferred', float('nan')):.3f}  (honest, deployable)")
+        print(f"      temperature-scaled= {cal_macro.get('temperature_scaled', float('nan')):.3f}  (= fixed 0.5; can't move the cut)")
+        print(f"      isotonic-regress.  = {cal_macro.get('isotonic_regression', float('nan')):.3f}  (smarter recalibration)")
         print(f"      prevalence-matched= {cal_macro.get('prevalence_matched', float('nan')):.3f}  (realistic clinical)")
         print(f"      oracle (ceiling)  = {cal_macro.get('oracle_youden', float('nan')):.3f}  (= what the AUC implies)")
         print(f"      mean ROC-AUC      = {cal_macro.get('roc_auc', float('nan')):.3f}  (threshold-independent)")

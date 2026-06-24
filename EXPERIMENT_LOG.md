@@ -536,3 +536,48 @@ Expected result: median >92.3% (the current lower bound from 18k-segment SSL).
 
 ### Session 7 total: ~2h compute
 
+---
+
+## Session 8 — 2026-06-19 (calibration follow-up — Alex Thread 1)
+
+### Does smarter post-hoc calibration beat the 0.643 deployable threshold?
+
+Question (HANDOFF_ALEX.md, Thread 1): does temperature scaling / isotonic / Platt,
+fit honestly, beat the train-transferred 0.643 balanced accuracy, toward the 0.732
+oracle?
+
+**Method — post-hoc, no model re-running** (no encoder checkpoints are local).
+`experiments/calibration_followup.py` reads the saved per-subject held-out scores
+from the three 3-seed supervised full-label from-scratch LODO runs
+(`lodo_supervised_s{0,1,2}_scratch_f100_noaug`). Calibrators are fit on a
+**cross-site proxy** — the *other* held-out sites — and applied unchanged to the
+target (the target's labels are used only to score). Sanity checks pass: recomputed
+fixed-0.5 equals the stored value, and temperature BA equals fixed BA exactly.
+
+**Results (subject-level LODO balanced accuracy, mean ± std over 3 seeds):**
+
+| Method | bal-acc | note |
+|---|---|---|
+| Fixed 0.5 | 0.585 ± 0.014 | reproduces dashboard |
+| Temperature scaling | 0.585 ± 0.014 | identical to fixed — a scalar can't move the 0.5 threshold |
+| Platt scaling | 0.591 ± 0.022 | cross-site proxy fit |
+| Isotonic regression | 0.629 ± 0.032 | cross-site proxy fit |
+| Train-transferred (**to beat**) | 0.643 ± 0.034 | reproduces dashboard |
+| Prevalence-matched | 0.686 ± 0.041 | |
+| Oracle (ceiling) | 0.732 ± 0.028 | |
+
+ECE (probability calibration, lower = better): raw **0.278 → 0.147** under temperature.
+Temperature fixes the *probabilities*, not the *decision*.
+
+**Conclusion: no honest post-hoc calibration beats 0.643.** With ROC-AUC fixed (~0.76)
+the only lever is the operating point, which threshold-transfer already sets near-
+optimally; the residual gap to the 0.732 oracle is irreducible cross-site threshold
+drift. A clean negative that reinforces Finding 2.
+
+**Caveat:** isotonic/Platt are fit on the other held-out sites' saved scores (a proxy
+for an independent labeled set, since same-model training scores were not serialized);
+those scores come from different per-fold models.
+
+Output: `results/calibration_followup.json`. Paper: 2 sentences added to §4.2 (Results),
+citing `guo2017calibration` + `zadrozny2002`. No compute (analysis from saved JSONs).
+

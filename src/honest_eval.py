@@ -175,6 +175,43 @@ def _ba(labels, scores, thr):
     return float(balanced_accuracy_score(labels, (scores > thr).astype(int)))
 
 
+def _temperature_ba(train_scores, train_labels, test_scores, test_labels, fallback):
+    """Balanced accuracy after temperature scaling: fit one scalar T on the TRAINING
+    logits (NLL-minimizing), apply to the held-out logits, threshold at 0.5. A single
+    temperature preserves the 0.5 crossing, so this equals the fixed-0.5 policy; we fit
+    and apply it explicitly rather than assume so. Falls back if scipy is unavailable."""
+    try:
+        from scipy.optimize import minimize_scalar
+        eps = 1e-6
+        rs = np.clip(np.asarray(train_scores, dtype=float), eps, 1 - eps)
+        z_tr = np.log(rs / (1 - rs)); y = np.asarray(train_labels, dtype=float)
+
+        def _nll(T):
+            zt = z_tr / T
+            return float(np.mean(y * np.logaddexp(0, -zt) + (1 - y) * np.logaddexp(0, zt)))
+
+        T = float(minimize_scalar(_nll, bounds=(0.05, 20.0), method="bounded").x)
+        ps = np.clip(np.asarray(test_scores, dtype=float), eps, 1 - eps)
+        cal = 1.0 / (1.0 + np.exp(-np.log(ps / (1 - ps)) / T))
+        return _ba(np.asarray(test_labels, dtype=int), cal, 0.5)
+    except Exception:
+        return fallback
+
+
+def _isotonic_ba(train_scores, train_labels, test_scores, test_labels, fallback):
+    """Balanced accuracy after isotonic regression fit on the TRAINING sites (a monotone
+    score->probability map), applied unchanged to the held-out site, threshold at 0.5.
+    Falls back if scikit-learn's IsotonicRegression is unavailable."""
+    try:
+        from sklearn.isotonic import IsotonicRegression
+        iso = IsotonicRegression(out_of_bounds="clip")
+        iso.fit(np.asarray(train_scores, dtype=float), np.asarray(train_labels, dtype=int))
+        cal = iso.predict(np.asarray(test_scores, dtype=float))
+        return _ba(np.asarray(test_labels, dtype=int), cal, 0.5)
+    except Exception:
+        return fallback
+
+
 def calibration_report(test_scores, test_labels, train_scores=None, train_labels=None):
     """How much cross-site balanced accuracy is recoverable once you stop using the
     fixed 0.5 threshold. All at the subject level. Threshold policies:
@@ -185,6 +222,10 @@ def calibration_report(test_scores, test_labels, train_scores=None, train_labels
                             true PD prevalence (mild, realistic clinical adaptation)
       - oracle_youden     : threshold maximizing bal_acc ON the held-out labels — NOT
                             achievable honestly; the ceiling implied by the ROC-AUC
+      - temperature_scaled : one scalar fit on the TRAINING sites (preserves the 0.5
+                            crossing, so it equals fixed-0.5 at the 0.5 threshold)
+      - isotonic_regression: monotone score-to-prob map fit on the TRAINING sites,
+                            applied unchanged to the held-out site (honest, deployable)
     """
     ts = np.asarray(test_scores, dtype=float)
     tl = np.asarray(test_labels, dtype=int)
@@ -217,8 +258,14 @@ def calibration_report(test_scores, test_labels, train_scores=None, train_labels
             thr_tr = float(max(cand_tr, key=lambda t: _ba(rl, rs, t)))
             out["train_transferred"] = _ba(tl, ts, thr_tr)
             out["train_threshold"] = thr_tr
+            # Smarter recalibration fit on the TRAINING sites, applied unchanged to the
+            # held-out site. Temperature can't move the 0.5 decision; isotonic can.
+            out["temperature_scaled"] = _temperature_ba(rs, rl, ts, tl, out["fixed_0.5"])
+            out["isotonic_regression"] = _isotonic_ba(rs, rl, ts, tl, out["fixed_0.5"])
         else:
             out["train_transferred"] = out["fixed_0.5"]
+            out["temperature_scaled"] = out["fixed_0.5"]
+            out["isotonic_regression"] = out["fixed_0.5"]
     return out
 
 
