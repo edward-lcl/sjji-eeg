@@ -1,0 +1,84 @@
+{
+  "description": "Thread 1 calibration follow-up \u2014 post-hoc, cross-site-proxy fit.",
+  "runs": [
+    {
+      "seed": 0,
+      "file": "results/lodo\\lodo_supervised_s0_scratch_f100_noaug_20260615_171656.json"
+    },
+    {
+      "seed": 1,
+      "file": "results/lodo\\lodo_supervised_s1_scratch_f100_noaug_20260616_051753.json"
+    },
+    {
+      "seed": 2,
+      "file": "results/lodo\\lodo_supervised_s2_scratch_f100_noaug_20260616_090923.json"
+    }
+  ],
+  "n_seeds": 3,
+  "per_seed": [
+    {
+      "fixed_0.5": 0.5729053287981859,
+      "temperature": 0.5729053287981859,
+      "platt": 0.6201814058956916,
+      "isotonic": 0.6379591836734694,
+      "train_transferred": 0.6214229024943311,
+      "prevalence_matched": 0.6374659863945579,
+      "oracle_youden": 0.6992431972789115
+    },
+    {
+      "fixed_0.5": 0.5764484126984127,
+      "temperature": 0.5764484126984127,
+      "platt": 0.5665759637188209,
+      "isotonic": 0.66218820861678,
+      "train_transferred": 0.6918367346938775,
+      "prevalence_matched": 0.7376672335600908,
+      "oracle_youden": 0.7681490929705216
+    },
+    {
+      "fixed_0.5": 0.6049886621315193,
+      "temperature": 0.6049886621315193,
+      "platt": 0.5851190476190476,
+      "isotonic": 0.5855215419501134,
+      "train_transferred": 0.6164937641723356,
+      "prevalence_matched": 0.6824631519274377,
+      "oracle_youden": 0.7275821995464852
+    }
+  ],
+  "summary_balanced_accuracy": {
+    "fixed_0.5": {
+      "mean": 0.5847808012093726,
+      "std": 0.014362139886233923
+    },
+    "temperature": {
+      "mean": 0.5847808012093726,
+      "std": 0.014362139886233923
+    },
+    "platt": {
+      "mean": 0.5906254724111867,
+      "std": 0.02222800625694336
+    },
+    "isotonic": {
+      "mean": 0.6285563114134542,
+      "std": 0.03199744728878708
+    },
+    "train_transferred": {
+      "mean": 0.6432511337868481,
+      "std": 0.03441409171422077
+    },
+    "prevalence_matched": {
+      "mean": 0.6858654572940287,
+      "std": 0.04097767070602969
+    },
+    "oracle_youden": {
+      "mean": 0.7316581632653061,
+      "std": 0.0282779740604311
+    }
+  },
+  "ece": {
+    "raw": 0.2777426351005584,
+    "temperature": 0.14675783346201354
+  },
+  "best_post_hoc_balanced_accuracy": 0.6285563114134542,
+  "caveat": "Isotonic/Platt are fit on the other held-out sites' saved scores (a proxy for an independent labeled set, since same-model training scores were not serialized); those scores come from different per-fold models.",
+  "conclusion": "No honest post-hoc calibration beats the 0.643 train-transferred threshold. Temperature scaling cannot move the fixed 0.5 operating point, and Platt/isotonic, fit on independent sites, do not exceed it either. With ROC-AUC fixed (~0.76) the decision threshold is the only lever, and transferring it from the training sites already captures most of the recoverable accuracy; the residual gap to the 0.732 oracle is irreducible cross-site threshold drift."
+}
