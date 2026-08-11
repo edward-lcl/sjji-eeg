@@ -2,7 +2,7 @@
 
 import torch
 from src.model import build_encoder, EEGClassifier
-from src.pretrain import eeg_augment, UnlabeledEEGDataset
+from src.pretrain import eeg_augment_batch, UnlabeledEEGDataset
 
 def test_encoder():
     enc = build_encoder(Chan=61, Features=244)
@@ -20,8 +20,8 @@ def test_classifier():
     print(f"✓ Classifier forward pass: {x.shape} → {logits.shape}")
 
 def test_augmentation():
-    x = torch.randn(61, 1024)
-    aug = eeg_augment(x)
+    x = torch.randn(1, 61, 1024)
+    aug = eeg_augment_batch(x)
     assert aug.shape == x.shape, f"Augmented shape mismatch: {aug.shape}"
     print(f"✓ Augmentation: shape preserved {aug.shape}")
 
